@@ -217,7 +217,7 @@ export default function DashboardPage() {
   }
   rankGrowth.sort((a, b) => (b.growth ?? 0) - (a.growth ?? 0));
   const top5 = rankGrowth.slice(0, 5);
-  const topRanking = [...units].sort((a, b) => a.ranking - b.ranking).slice(0, 5);
+  const topRanking = [...units].sort((a, b) => (b.growth ?? 0) - (a.growth ?? 0)).slice(0, 5);
 
   const situationData = [
     { name: 'Destaque', value: destaque, color: '#8B5CF6' },
