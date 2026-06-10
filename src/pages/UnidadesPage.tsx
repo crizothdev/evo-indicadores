@@ -30,6 +30,14 @@ export default function UnidadesPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('growth-desc');
+  const sortLabels: Record<string, string> = {
+    'growth-desc': 'Desempenho (maior)',
+    'growth-asc': 'Desempenho (menor)',
+    'engagement-desc': 'Engajamento (maior)',
+    'engagement-asc': 'Engajamento (menor)',
+    'ranking-asc': 'Ranking (melhor)',
+    'tces-desc': 'TCEs (maior)',
+  };
 
   const filtered = useMemo(() => {
     let list = [...units];
@@ -90,11 +98,11 @@ export default function UnidadesPage() {
         </Select>
         <Select value={sortBy} onValueChange={(v) => setSortBy(v ?? 'growth-desc')}>
           <SelectTrigger className="w-44" style={{ borderRadius: '8px', border: '1px solid #EEEEEE', height: '36px', padding: '0 12px' }}>
-            <SelectValue placeholder="Ordenar" />
+            <SelectValue>{sortLabels[sortBy] || 'Ordenar'}</SelectValue>
           </SelectTrigger>
           <SelectContent style={{ background: '#fff' }}>
-            <SelectItem value="growth-desc">Crescimento (maior)</SelectItem>
-            <SelectItem value="growth-asc">Crescimento (menor)</SelectItem>
+            <SelectItem value="growth-desc">Desempenho (maior)</SelectItem>
+            <SelectItem value="growth-asc">Desempenho (menor)</SelectItem>
             <SelectItem value="engagement-desc">Engajamento (maior)</SelectItem>
             <SelectItem value="engagement-asc">Engajamento (menor)</SelectItem>
             <SelectItem value="ranking-asc">Ranking (melhor)</SelectItem>
