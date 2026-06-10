@@ -55,17 +55,17 @@ export async function fetchUnits(): Promise<Unit[]> {
         unit.tces = latest.total;
       }
     }
-    const withTces = data.map(u => ({ id: u.id, tces: u.tces ?? 0 }));
-    withTces.sort((a, b) => {
-      if (a.tces > b.tces) return -1;
-      if (a.tces < b.tces) return 1;
-      return 0;
-    });
-    withTces.forEach((u, i) => {
-      const found = data.find(d => d.id === u.id);
-      if (found) found.ranking = i + 1;
-    });
   } catch {}
+  const withTces = data.map(u => ({ id: u.id, tces: u.tces ?? 0 }));
+  withTces.sort((a, b) => {
+    if (a.tces > b.tces) return -1;
+    if (a.tces < b.tces) return 1;
+    return 0;
+  });
+  withTces.forEach((u, i) => {
+    const found = data.find(d => d.id === u.id);
+    if (found) found.ranking = i + 1;
+  });
   return data;
 }
 
@@ -89,15 +89,16 @@ export async function fetchUnit(id: string): Promise<Unit | null> {
         data.growth = latest.totalTCE - (lastPrevEntry?.totalTCE ?? 0);
         data.tces = latest.totalTCE;
       }
-      const latestPerUnit: Record<string, { tces: number; date: string }> = {};
-      for (const h of history) {
-        const existing = latestPerUnit[h.razaoSocial];
-        if (!existing || h.date > existing.date) {
-          latestPerUnit[h.razaoSocial] = { tces: h.totalTCE, date: h.date };
-        }
-      }
-      const tcesSorted = Object.entries(latestPerUnit).sort(([, a], [, b]) => b.tces - a.tces);
-      const rank = tcesSorted.findIndex(([name]) => name === data.nomeFantasia || name === data.razaoSocial) + 1;
+    } catch {}
+    try {
+      const allUnits = await firestore.fetchUnits();
+      const withTces = allUnits.map(u => ({ id: u.id, tces: u.tces ?? 0 }));
+      withTces.sort((a, b) => {
+        if (a.tces > b.tces) return -1;
+        if (a.tces < b.tces) return 1;
+        return 0;
+      });
+      const rank = withTces.findIndex(u => u.id === data.id) + 1;
       if (rank > 0) data.ranking = rank;
     } catch {}
   }
