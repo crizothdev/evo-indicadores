@@ -262,7 +262,7 @@ export default function Top5Page() {
                           {entry.status !== 'Aprovada' && entry.status !== 'Rejeitada' && (
                             <button type="button" onClick={() => updateTop5.mutate({ id: (entry as any).id, data: { status: 'Aprovada' } })} style={{ padding: '4px', background: 'none', border: 'none', cursor: 'pointer', color: '#2E7D32' }}><CheckCircle className="h-4 w-4" /></button>
                           )}
-                          {entry.status !== 'Rejeitada' && (
+                          {entry.status !== 'Aprovada' && (
                             <button type="button" onClick={async () => { try { const snap = await getDocs(query(collection(db, 'top5_audit'), where('name', '==', entry.name))); await Promise.all(snap.docs.map(d => deleteDoc(doc(db, 'top5_audit', d.id)))); queryClient.invalidateQueries({ queryKey: ['top5'] }); } catch (e) { console.error(e); } }} style={{ padding: '4px', background: 'none', border: 'none', cursor: 'pointer', color: '#C62828' }} title="Remover"><XCircle className="h-4 w-4" /></button>
                           )}
                         </div>
