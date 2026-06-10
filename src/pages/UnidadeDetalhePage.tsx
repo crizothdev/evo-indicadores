@@ -93,20 +93,10 @@ export default function UnidadeDetalhePage() {
       ).map(([month, value]) => ({ month: month.slice(5), value })).sort((a, b) => a.month.localeCompare(b.month))
     : [];
 
-  function getDailySample(data: { month: string; value: number }[]): { month: string; value: number }[] {
-    const days = new Set([1, 5, 10, 15, 20, 25]);
-    const lastDate = data.length > 0 ? data[data.length - 1].month : '';
-    const lastDay = lastDate ? parseInt(lastDate.split('-')[1], 10) : 0;
-    const fullDays = new Set(days);
-    if (lastDay) fullDays.add(lastDay);
-    return data.filter(d => fullDays.has(parseInt(d.month.split('-')[1], 10)));
-  }
-
-  const periodMap: Record<string, number> = { '5d': 5, '15d': 15, 'month': 60, '3m': 180, '5m': 5, '12m': 12 };
-  const isDaily = periodFilter === '5d' || periodFilter === '15d' || periodFilter === 'month' || periodFilter === '3m';
-  const historyData = isDaily
-    ? (periodFilter === 'month' || periodFilter === '3m' ? getDailySample(dailyData.slice(-periodMap[periodFilter])) : dailyData.slice(-periodMap[periodFilter]))
-    : (monthlyAgg.length > 0 ? monthlyAgg : dailyData).slice(-periodMap[periodFilter]);
+  const monthCounts: Record<string, number> = { '5d': 1, '15d': 1, month: 1, '3m': 3, '5m': 5, '12m': 12 };
+  const historyData = periodFilter === '5d' && dailyData.length >= 3
+    ? dailyData.slice(-5)
+    : (monthlyAgg.length > 0 ? monthlyAgg : dailyData).slice(-(monthCounts[periodFilter] ?? 12));
 
   const metrics = [
     { label: 'TCEs Ativos', value: String(unit?.tces ?? 0), sub: '+8 este mês' },
@@ -179,14 +169,20 @@ export default function UnidadeDetalhePage() {
           <CardContent>
             <ResponsiveContainer width="100%" height={140}>
               <LineChart data={historyData}>
-                <XAxis dataKey="month" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(value: any) => [`${value} TCEs`, '']} labelFormatter={(label: any) => {
+                <XAxis dataKey="month" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(label: any) => {
+                  const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
                   if (label.includes('-')) {
                     const [m, d] = label.split('-');
-                    const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-                    return `${meses[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`;
+                    return `${parseInt(d, 10)}/${meses[parseInt(m, 10) - 1]}`;
                   }
+                  return meses[parseInt(label, 10) - 1] || label;
+                }} />
+                <Tooltip formatter={(value: any) => [`${value} TCEs`, '']} labelFormatter={(label: any) => {
                   const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+                  if (label.includes('-')) {
+                    const [m, d] = label.split('-');
+                    return `${parseInt(d, 10)}/${meses[parseInt(m, 10) - 1]}`;
+                  }
                   return meses[parseInt(label, 10) - 1] || label;
                 }} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
                 <Line type="monotone" dataKey="value" stroke="#DC3545" strokeWidth={2} dot={{ r: 3, fill: '#DC3545' }} />

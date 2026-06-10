@@ -116,29 +116,33 @@ export default function DashboardPage() {
   const atencao = units.filter((u) => u.status === 'Atenção').length;
   const critico = units.filter((u) => u.status === 'Crítico').length;
 
-  function getDailySample(data: any[]): any[] {
-    const days = new Set([1, 5, 10, 15, 20, 25]);
-    const lastDate = data.length > 0 ? data[data.length - 1].date : '';
-    const lastDay = lastDate ? parseInt(lastDate.split('-')[1], 10) : 0;
-    const fullDays = new Set(days);
-    if (lastDay) fullDays.add(lastDay);
-    return data.filter(d => fullDays.has(parseInt(d.date.split('-')[1], 10)));
+  function formatMonth(m: string): string {
+    const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    return meses[parseInt(m, 10) - 1] || m;
+  }
+
+  function formatDateLabel(label: string): string {
+    if (label.includes('-')) {
+      const [m, d] = label.split('-');
+      return `${parseInt(d, 10)}/${formatMonth(m)}`;
+    }
+    return formatMonth(label);
   }
 
   const evoData: any[] = chartMetric === 'tces'
     ? (() => {
-        const dailyCount = evoPeriod === '5d' ? 5 : evoPeriod === '15d' ? 15 : evoPeriod === '1m' ? 30 : evoPeriod === '3m' ? 90 : 0;
-        if (dailyCount > 0 && dailyHistory.length > 0) {
-          const data = dailyHistory.slice(-dailyCount);
-          return evoPeriod === '1m' || evoPeriod === '3m' ? getDailySample(data) : data;
+        if (evoPeriod === '5d' && dailyHistory.length >= 3) {
+          return dailyHistory.slice(-5);
         }
-        const count = evoPeriod === '6m' ? 6 : 12;
+        const monthCounts: Record<string, number> = { '5d': 1, '15d': 1, '1m': 1, '3m': 3, '6m': 6, '12m': 12 };
+        const count = monthCounts[evoPeriod] ?? 12;
         const data = totalHistory.slice(-count);
         while (data.length < count) data.unshift({ month: '—', total: 0 });
         return data;
       })()
     : (() => {
-        const count = evoPeriod === '5d' ? 5 : evoPeriod === '15d' ? 15 : evoPeriod === '1m' ? 1 : evoPeriod === '3m' ? 3 : evoPeriod === '6m' ? 6 : 12;
+        const monthCounts: Record<string, number> = { '5d': 1, '15d': 1, '1m': 1, '3m': 3, '6m': 6, '12m': 12 };
+        const count = monthCounts[evoPeriod] ?? 12;
         const data = engagementHistory.slice(-count);
         while (data.length < count) data.unshift({ month: '—', total: 0, max: 100 });
         return data;
@@ -254,15 +258,8 @@ export default function DashboardPage() {
           <CardContent className="pt-0">
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={evoData}>
-                <XAxis dataKey={evoData.length > 0 && 'month' in evoData[0] ? 'month' : 'date'} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(value: any) => [`${value}${chartMetric === 'engagement' ? '%' : ' TCEs'}`, chartMetric === 'engagement' ? 'Engajamento' : 'Total']} labelFormatter={(label: any) => {
-                  if (chartMetric !== 'engagement' && evoData.length > 0 && 'date' in evoData[0]) {
-                    const [m, d] = label.split('-');
-                    const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-                    return `${meses[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`;
-                  }
-                  return `Mês: ${label}`;
-                }} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
+                <XAxis dataKey={evoData.length > 0 && 'date' in evoData[0] ? 'date' : 'month'} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(label: any) => formatDateLabel(label)} />
+                <Tooltip formatter={(value: any) => [`${value}${chartMetric === 'engagement' ? '%' : ' TCEs'}`, chartMetric === 'engagement' ? 'Engajamento' : 'Total']} labelFormatter={(label: any) => formatDateLabel(label)} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
                 <Line type="monotone" dataKey="total" stroke="#DC3545" strokeWidth={2} dot={{ r: 3, fill: '#DC3545' }} />
               </LineChart>
             </ResponsiveContainer>
