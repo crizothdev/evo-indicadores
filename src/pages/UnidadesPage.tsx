@@ -45,8 +45,8 @@ export default function UnidadesPage() {
 
     list.sort((a, b) => {
       switch (sortBy) {
-        case 'growth-desc': return b.growth - a.growth;
-        case 'growth-asc': return a.growth - b.growth;
+        case 'growth-desc': return (b.growth ?? -999999) - (a.growth ?? -999999);
+        case 'growth-asc': return (a.growth ?? -999999) - (b.growth ?? -999999);
         case 'engagement-desc': return b.engagement - a.engagement;
         case 'engagement-asc': return a.engagement - b.engagement;
         case 'ranking-asc': return a.ranking - b.ranking;

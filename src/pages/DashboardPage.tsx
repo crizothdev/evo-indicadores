@@ -215,7 +215,7 @@ export default function DashboardPage() {
       rankGrowth.push({ unit, growth: curr - prev, tces: curr });
     }
   }
-  rankGrowth.sort((a, b) => b.growth - a.growth);
+  rankGrowth.sort((a, b) => (b.growth ?? 0) - (a.growth ?? 0));
   const top5 = rankGrowth.slice(0, 5);
   const topRanking = [...units].sort((a, b) => a.ranking - b.ranking).slice(0, 5);
 
