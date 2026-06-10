@@ -3,12 +3,12 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+  apiKey: 'AIzaSyC0URiBTrOwx1kJM3N3CawGx6YU191621s',
+  authDomain: 'evo-indicadores.firebaseapp.com',
+  projectId: 'evo-indicadores',
+  storageBucket: 'evo-indicadores.firebasestorage.app',
+  messagingSenderId: '437549546365',
+  appId: '1:437549546365:web:ef44b1b024f75b65782a14',
 };
 
 const app = initializeApp(firebaseConfig);
