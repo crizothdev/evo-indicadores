@@ -31,7 +31,7 @@ function ApproveDialog({ user, onApprove }: { user: User; onApprove: (data: { ro
 
   return (
     <>
-      <Button size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
+      <Button size="sm" className="gap-1.5" onClick={() => setOpen(true)} style={{ padding: '6px 14px', color: '#fff' }}>
         <CheckCircle2 className="h-3.5 w-3.5" /> Aprovar
       </Button>
 
@@ -76,7 +76,7 @@ function ApproveDialog({ user, onApprove }: { user: User; onApprove: (data: { ro
 
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-              <Button className="gap-1.5" onClick={handleConfirm}>
+              <Button className="gap-1.5" onClick={handleConfirm} style={{ padding: '8px 18px', color: '#fff' }}>
                 <CheckCircle2 className="h-4 w-4" /> Confirmar Aprovação
               </Button>
             </div>
@@ -94,7 +94,7 @@ export default function UsuariosPage() {
   const { user: currentUser } = useAuth();
 
   const handleApprove = (userId: string, data: { role: Role; unitId?: string }) => {
-    updateUser.mutate({ id: userId, data });
+    updateUser.mutate({ id: userId, data: { ...data, approved: true } });
   };
 
   const allUsers = users ?? [];
