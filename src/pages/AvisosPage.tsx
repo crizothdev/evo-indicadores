@@ -103,6 +103,7 @@ export default function AvisosPage() {
   const filteredNotices = isFranchise && userUnitName
     ? notices.filter(n => n.target === 'all' || (n.target || '').split(',').includes(userUnitName))
     : notices;
+  const createNotice = useCreateNotice();
   const updateNotice = useUpdateNotice();
   const deleteNotice = useDeleteNotice();
 
@@ -123,10 +124,10 @@ export default function AvisosPage() {
   };
 
   const handleEdit = () => {
-    if (!editingId) return;
+    if (!selectedId) return;
     const isBroadcast = form.targets.length === 0;
-    updateNotice.mutate({ id: editingId, data: { title: form.title, content: form.content, important: form.important, target: isBroadcast ? 'all' : form.targets.join(',') } });
-    setEditingId(null);
+    updateNotice.mutate({ id: selectedId, data: { title: form.title, content: form.content, important: form.important, target: isBroadcast ? 'all' : form.targets.join(',') } });
+    setSelectedId(null);
     setForm(emptyForm);
   };
 

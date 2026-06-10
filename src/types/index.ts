@@ -53,6 +53,7 @@ export interface Top5Entry {
   social: 'OK' | 'Pendente';
   payment: 'OK' | 'Pendente';
   status: 'Aprovada' | 'Pendente' | 'Rejeitada';
+  month?: string;
 }
 
 export interface FollowUp {

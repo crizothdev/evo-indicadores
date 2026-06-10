@@ -233,7 +233,7 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={evoData}>
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(value: number) => [`${value}${chartMetric === 'engagement' ? '%' : ' TCEs'}`, chartMetric === 'engagement' ? 'Engajamento' : 'Total']} labelFormatter={(label: string) => `Mês: ${label}`} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
+                <Tooltip formatter={(value: any) => [`${value}${chartMetric === 'engagement' ? '%' : ' TCEs'}`, chartMetric === 'engagement' ? 'Engajamento' : 'Total']} labelFormatter={(label: any) => `Mês: ${label}`} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
                 <Line type="monotone" dataKey="total" stroke="#DC3545" strokeWidth={2} dot={{ r: 3, fill: '#DC3545' }} />
               </LineChart>
             </ResponsiveContainer>

@@ -158,7 +158,7 @@ export default function FranquiaDashboardPage() {
             <ResponsiveContainer width="100%" height={140}>
               <LineChart data={historyData}>
                 <XAxis dataKey="month" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(value: number) => [`${value} TCEs`, '']} labelFormatter={(label: string) => `${label}`} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
+                <Tooltip formatter={(value: any) => [`${value} TCEs`, '']} labelFormatter={(label: any) => `${label}`} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
                 <Line type="monotone" dataKey="value" stroke="#DC3545" strokeWidth={2} dot={{ r: 3, fill: '#DC3545' }} />
               </LineChart>
             </ResponsiveContainer>
