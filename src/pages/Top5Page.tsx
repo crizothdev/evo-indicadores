@@ -9,8 +9,12 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trophy, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Trophy, CheckCircle, XCircle, Loader2, History } from 'lucide-react';
 import { collection, getDocs, addDoc, doc, deleteDoc, query, where, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Role } from '@/types';
@@ -40,6 +44,10 @@ export default function Top5Page() {
   const [auditPayment, setAuditPayment] = useState('OK');
   const [saving, setSaving] = useState(false);
   const [viewMonth, setViewMonth] = useState(new Date().getMonth() + 1);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualMonth, setManualMonth] = useState<string>('');
+  const [manualPositions, setManualPositions] = useState<string[]>(['', '', '', '', '']);
 
   const year = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1;
@@ -78,14 +86,16 @@ export default function Top5Page() {
     })();
   }, []);
 
-  const candidates = units.map(u => {
+  const candidates = isCurrentMonth ? units.map(u => {
     const curr = unitMonthly[u.nomeFantasia]?.[monthKey] ?? 0;
     const prev = unitMonthly[u.nomeFantasia]?.[prevMonthKey] ?? 0;
     const growth = prev > 0 ? Math.round(((curr - prev) / prev) * 100) : curr > 0 ? 100 : 0;
     const train = trainingData[u.nomeFantasia];
     const engagement = train ? Math.round((train.attended / train.total) * 100) : 0;
     return { ...u, growth, growthOk: growth > 0, engagement, engagementOk: engagement >= 80 };
-  }).filter(c => c.growthOk).sort((a, b) => b.growth - a.growth);
+  }).filter(c => c.growthOk).sort((a, b) => b.growth - a.growth) : [];
+
+  const monthsWithEntries = [...new Set(entries.map(e => e.month).filter((m): m is string => !!m))].sort();
 
   const handleOpenAudit = (unit: typeof candidates[0]) => {
     setAuditTarget({ unit: unit.nomeFantasia, growth: unit.growth, engagement: unit.engagement });
@@ -124,6 +134,36 @@ export default function Top5Page() {
     }
   };
 
+  const handleManualSave = async () => {
+    const filled = manualPositions.filter(Boolean);
+    if (filled.length === 0) return;
+    setSaving(true);
+    try {
+      const existing = await getDocs(query(collection(db, 'top5_audit'), where('month', '==', manualMonth)));
+      for (const d of existing.docs) await deleteDoc(doc(db, 'top5_audit', d.id));
+      for (let i = 0; i < manualPositions.length; i++) {
+        const name = manualPositions[i];
+        if (!name) continue;
+        await addDoc(collection(db, 'top5_audit'), {
+          name,
+          pos: i + 1,
+          growth: '0',
+          training: 'OK',
+          social: 'OK',
+          payment: 'OK',
+          status: 'Aprovada',
+          month: manualMonth,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['top5'] });
+      setManualOpen(false);
+      setManualPositions(['', '', '', '', '']);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-5">
@@ -150,6 +190,11 @@ export default function Top5Page() {
               {entries.filter(e => e.status === 'Aprovada' && e.month === monthKey).length} Aprovada
             </Badge>
           </div>
+          {canAudit && (
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setHistoryOpen(true)}>
+              <History className="h-4 w-4" /> Histórico
+            </Button>
+          )}
         </div>
       </PageHeader>
 
@@ -204,7 +249,7 @@ export default function Top5Page() {
         </Card>
       )}
 
-      {canAudit && candidates.filter(c => !entries.find(e => e.name === c.nomeFantasia)).length > 0 && (
+      {isCurrentMonth && canAudit && candidates.filter(c => !entries.find(e => e.name === c.nomeFantasia)).length > 0 && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2"><Trophy className="h-4 w-4 text-yellow-500" /> Candidatos Elegíveis</CardTitle>
@@ -244,15 +289,91 @@ export default function Top5Page() {
         </Card>
       )}
 
-      {entries.filter(e => !e.month || e.month === monthKey).length === 0 && (!canAudit || candidates.filter(c => !entries.find(e => e.name === c.nomeFantasia)).length === 0) && (
+      {entries.filter(e => !e.month || e.month === monthKey).length === 0 && (!isCurrentMonth || !canAudit || candidates.filter(c => !entries.find(e => e.name === c.nomeFantasia)).length === 0) && (
         <Card>
           <CardContent style={{ padding: '32px', textAlign: 'center' }}>
             <Trophy className="h-8 w-8" style={{ color: '#FFC107', margin: '0 auto 8px' }} />
             <p style={{ fontSize: '14px', fontWeight: 600, color: '#666' }}>{['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][viewMonth - 1]}</p>
-            <p style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>Nenhum candidato disponível para este mês.</p>
+            <p style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>{isCurrentMonth ? 'Nenhum candidato disponível para este mês.' : 'Nenhum dado histórico disponível para este mês.'}</p>
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Histórico TOP 5</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            {monthsWithEntries.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Nenhum mês com registro.</p>
+            ) : (
+              monthsWithEntries.map(m => {
+                const monthEntries = entries.filter(e => e.month === m).sort((a, b) => a.pos - b.pos);
+                return (
+                  <Card key={m}>
+                    <CardContent style={{ padding: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontWeight: 600, fontSize: '14px' }}>
+                          {['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][parseInt(m.split('-')[1], 10) - 1]} {m.split('-')[0]}
+                        </span>
+                        <Button size="sm" variant="outline" onClick={() => {
+                          setManualMonth(m);
+                          const existing = monthEntries.map(e => e.name);
+                          const filled = ['', '', '', '', ''];
+                          existing.forEach((name, i) => { if (i < 5) filled[i] = name; });
+                          setManualPositions(filled);
+                          setHistoryOpen(false);
+                          setManualOpen(true);
+                        }}>Inserir Manualmente</Button>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>
+                        {monthEntries.map((e, i) => (
+                          <span key={e.name} style={{ display: 'block', padding: '2px 0' }}>
+                            <strong>{e.pos}.</strong> {e.name} — {e.status}
+                          </span>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={manualOpen} onOpenChange={setManualOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Inserir TOP 5 Manualmente</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p style={{ fontSize: '13px', color: '#666' }}>Mês: <strong>{manualMonth}</strong></p>
+            {[1, 2, 3, 4, 5].map(pos => (
+              <div key={pos} className="space-y-1">
+                <Label>{pos}ª Posição</Label>
+                <Select value={manualPositions[pos - 1]} onValueChange={v => {
+                  const next = [...manualPositions];
+                  next[pos - 1] = v ?? '';
+                  setManualPositions(next);
+                }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma unidade" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {units.map(u => (
+                      <SelectItem key={u.id} value={u.nomeFantasia}>{u.nomeFantasia}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManualOpen(false)}>Cancelar</Button>
+            <Button onClick={handleManualSave} disabled={saving || manualPositions.every(p => !p)}>
+              {saving ? 'Salvando...' : 'Salvar TOP 5'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {auditTarget && (() => {
         const growthOk = auditTarget.growth > 0;
