@@ -52,8 +52,14 @@ export async function fetchUnits(): Promise<Unit[]> {
         const lastPrevEntry = prevEntries.length > 0 ? prevEntries[prevEntries.length - 1] : null;
         const baseline = lastPrevEntry?.total ?? 0;
         unit.growth = latest.total - baseline;
+        unit.tces = latest.total;
       }
     }
+    const ranked = [...data].sort((a, b) => b.tces - a.tces);
+    ranked.forEach((u, i) => {
+      const found = data.find(d => d.id === u.id);
+      if (found) found.ranking = i + 1;
+    });
   } catch {}
   return data;
 }
@@ -76,7 +82,18 @@ export async function fetchUnit(id: string): Promise<Unit | null> {
         const prevEntries = unitHistory.filter(h => h.date < currentMonth + '-01');
         const lastPrevEntry = prevEntries.length > 0 ? prevEntries[prevEntries.length - 1] : null;
         data.growth = latest.totalTCE - (lastPrevEntry?.totalTCE ?? 0);
+        data.tces = latest.totalTCE;
       }
+      const latestPerUnit: Record<string, { tces: number; date: string }> = {};
+      for (const h of history) {
+        const existing = latestPerUnit[h.razaoSocial];
+        if (!existing || h.date > existing.date) {
+          latestPerUnit[h.razaoSocial] = { tces: h.totalTCE, date: h.date };
+        }
+      }
+      const tcesSorted = Object.entries(latestPerUnit).sort(([, a], [, b]) => b.tces - a.tces);
+      const rank = tcesSorted.findIndex(([name]) => name === data.nomeFantasia || name === data.razaoSocial) + 1;
+      if (rank > 0) data.ranking = rank;
     } catch {}
   }
   return data;
