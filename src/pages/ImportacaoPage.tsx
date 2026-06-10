@@ -33,7 +33,7 @@ function parseCSVLine(line: string): string[] {
 
 const INSTRUCTIONS: Record<ImportType, string> = {
   tce: `Informe a data no campo acima, depois cole os nomes das unidades (um por linha).
-O app conta quantas vezes cada unidade aparece e compara com o dia anterior.
+O app conta quantas vezes cada unidade aparece e compara com o último dia do mês anterior.
 Exemplo:
 Unidade Centro
 Unidade Norte

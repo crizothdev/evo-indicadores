@@ -132,23 +132,15 @@ export async function fetchTCEHistory(unitId?: string): Promise<{ date: string; 
 export async function saveTCEImport(batch: { date: string; rows: { razaoSocial: string }[]; summary: Record<string, number> }): Promise<{ id: string; comparison: { razaoSocial: string; yesterday: number; today: number; diff: number }[] }> {
   const isoDate = batch.date.split('/').reverse().join('-');
 
-  const prevSnap = await getDocs(query(collection(db, 'tce_history'), orderBy('date', 'desc'), limit(100)));
-  const seenDates = new Set<string>();
-  let prevDate = '';
-  for (const d of prevSnap.docs) {
-    const date = d.data().date as string;
-    if (date !== isoDate && !seenDates.has(date)) {
-      prevDate = date;
-      break;
-    }
-    seenDates.add(date);
-  }
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const lastPrevMonth = new Date(y, m - 1, 0);
+  const prevMonthDate = lastPrevMonth.toISOString().slice(0, 10);
 
-  const yesterdayData: Record<string, number> = {};
-  if (prevDate) {
-    const prevDaySnap = await getDocs(query(collection(db, 'tce_history'), where('date', '==', prevDate)));
-    prevDaySnap.docs.forEach(d => {
-      yesterdayData[d.data().razaoSocial] = d.data().totalTCE;
+  const prevMonthData: Record<string, number> = {};
+  if (prevMonthDate < isoDate) {
+    const prevMonthSnap = await getDocs(query(collection(db, 'tce_history'), where('date', '==', prevMonthDate)));
+    prevMonthSnap.docs.forEach(doc => {
+      prevMonthData[doc.data().razaoSocial] = doc.data().totalTCE;
     });
   }
 
@@ -161,8 +153,8 @@ export async function saveTCEImport(batch: { date: string; rows: { razaoSocial: 
     await addDoc(collection(db, 'tce_history'), { date: isoDate, razaoSocial: razao, totalTCE: total, createdAt: serverTimestamp() });
     const unitSnap = await getDocs(query(collection(db, 'units'), where('nomeFantasia', '==', razao)));
     if (!unitSnap.empty) {
-      const yesterday = yesterdayData[razao] ?? 0;
-      const diff = total - yesterday;
+      const baseline = prevMonthData[razao] ?? 0;
+      const diff = total - baseline;
       const status = calcStatus(diff);
       await updateDoc(doc(db, 'units', unitSnap.docs[0].id), { tces: total, growth: diff, status });
     }
@@ -194,11 +186,11 @@ export async function saveTCEImport(batch: { date: string; rows: { razaoSocial: 
 
   const comparison = Object.entries(batch.summary).map(([razao, today]) => ({
     razaoSocial: razao,
-    yesterday: yesterdayData[razao] ?? 0,
+    yesterday: prevMonthData[razao] ?? 0,
     today,
-    diff: today - (yesterdayData[razao] ?? 0),
+    diff: today - (prevMonthData[razao] ?? 0),
   }));
-  for (const [razao, yesterday] of Object.entries(yesterdayData)) {
+  for (const [razao, yesterday] of Object.entries(prevMonthData)) {
     if (!batch.summary[razao]) {
       comparison.push({ razaoSocial: razao, yesterday, today: 0, diff: -yesterday });
     }
