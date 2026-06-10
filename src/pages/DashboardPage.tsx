@@ -215,7 +215,13 @@ export default function DashboardPage() {
       rankGrowth.push({ unit, growth: curr - prev, tces: curr });
     }
   }
-  rankGrowth.sort((a, b) => (b.growth ?? 0) - (a.growth ?? 0));
+  rankGrowth.sort((a, b) => {
+    const ag = a.growth ?? -999999;
+    const bg = b.growth ?? -999999;
+    if (bg > ag) return 1;
+    if (bg < ag) return -1;
+    return 0;
+  });
   const top5 = rankGrowth.slice(0, 5);
   const topRanking = [...units].sort((a, b) => (b.growth ?? 0) - (a.growth ?? 0)).slice(0, 5);
 

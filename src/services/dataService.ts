@@ -55,8 +55,13 @@ export async function fetchUnits(): Promise<Unit[]> {
         unit.tces = latest.total;
       }
     }
-    const ranked = [...data].sort((a, b) => b.tces - a.tces);
-    ranked.forEach((u, i) => {
+    const withTces = data.map(u => ({ id: u.id, tces: u.tces ?? 0 }));
+    withTces.sort((a, b) => {
+      if (a.tces > b.tces) return -1;
+      if (a.tces < b.tces) return 1;
+      return 0;
+    });
+    withTces.forEach((u, i) => {
       const found = data.find(d => d.id === u.id);
       if (found) found.ranking = i + 1;
     });
