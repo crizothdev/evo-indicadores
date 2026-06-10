@@ -47,11 +47,10 @@ export async function fetchUnits(): Promise<Unit[]> {
       if (unitHistory && unitHistory.length > 0) {
         unitHistory.sort((a, b) => a.date.localeCompare(b.date));
         const latest = unitHistory[unitHistory.length - 1];
-        const d = new Date(latest.date + 'T00:00:00');
-        const lastPrevMonth = new Date(d.getFullYear(), d.getMonth(), 0);
-        const prevDate = lastPrevMonth.toISOString().slice(0, 10);
-        const prevEntry = unitHistory.find(h => h.date === prevDate);
-        const baseline = prevEntry?.total ?? 0;
+        const currentMonth = latest.date.slice(0, 7);
+        const prevEntries = unitHistory.filter(h => h.date < currentMonth + '-01');
+        const lastPrevEntry = prevEntries.length > 0 ? prevEntries[prevEntries.length - 1] : null;
+        const baseline = lastPrevEntry?.total ?? 0;
         unit.growth = latest.total - baseline;
       }
     }
@@ -73,10 +72,10 @@ export async function fetchUnit(id: string): Promise<Unit | null> {
       if (unitHistory.length > 0) {
         unitHistory.sort((a, b) => a.date.localeCompare(b.date));
         const latest = unitHistory[unitHistory.length - 1];
-        const d = new Date(latest.date + 'T00:00:00');
-        const prevDate = new Date(d.getFullYear(), d.getMonth(), 0).toISOString().slice(0, 10);
-        const prevEntry = unitHistory.find(h => h.date === prevDate);
-        data.growth = latest.totalTCE - (prevEntry?.totalTCE ?? 0);
+        const currentMonth = latest.date.slice(0, 7);
+        const prevEntries = unitHistory.filter(h => h.date < currentMonth + '-01');
+        const lastPrevEntry = prevEntries.length > 0 ? prevEntries[prevEntries.length - 1] : null;
+        data.growth = latest.totalTCE - (lastPrevEntry?.totalTCE ?? 0);
       }
     } catch {}
   }

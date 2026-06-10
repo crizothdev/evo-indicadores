@@ -212,7 +212,7 @@ export default function DashboardPage() {
     const curr = months[rankMonthKey] ?? 0;
     const prev = months[prevMonthKey] ?? 0;
     if (curr > 0 || prev > 0) {
-      rankGrowth.push({ unit, growth: prev > 0 ? Math.round(((curr - prev) / prev) * 100) : curr > 0 ? 100 : -100, tces: curr });
+      rankGrowth.push({ unit, growth: curr - prev, tces: curr });
     }
   }
   rankGrowth.sort((a, b) => b.growth - a.growth);

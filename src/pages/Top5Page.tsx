@@ -89,7 +89,7 @@ export default function Top5Page() {
   const candidates = isCurrentMonth ? units.map(u => {
     const curr = unitMonthly[u.nomeFantasia]?.[monthKey] ?? 0;
     const prev = unitMonthly[u.nomeFantasia]?.[prevMonthKey] ?? 0;
-    const growth = prev > 0 ? Math.round(((curr - prev) / prev) * 100) : curr > 0 ? 100 : 0;
+    const growth = curr - prev;
     const train = trainingData[u.nomeFantasia];
     const engagement = train ? Math.round((train.attended / train.total) * 100) : 0;
     return { ...u, growth, growthOk: growth > 0, engagement, engagementOk: engagement >= 80 };
