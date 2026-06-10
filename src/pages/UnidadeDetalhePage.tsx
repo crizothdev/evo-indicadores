@@ -76,13 +76,7 @@ export default function UnidadeDetalhePage() {
     );
   }
 
-  const dailyData = tceHistory.length > 0
-    ? tceHistory.map(h => ({ month: h.date.slice(5), value: h.totalTCE }))
-    : months.map((month, i) => ({
-        month,
-        value: Math.round((unit?.tces ?? 0) * (0.5 + (i + 1) / 12) * (1 + (Math.random() - 0.5) * 0.1)),
-      }));
-
+  const dailyData = tceHistory.map(h => ({ date: h.date, value: h.totalTCE }));
   const monthlyAgg = tceHistory.length > 0
     ? Object.entries(
         tceHistory.reduce((acc: Record<string, number>, h) => {
@@ -93,10 +87,64 @@ export default function UnidadeDetalhePage() {
       ).map(([month, value]) => ({ month: month.slice(5), value })).sort((a, b) => a.month.localeCompare(b.month))
     : [];
 
-  const monthCounts: Record<string, number> = { '5d': 1, '15d': 1, month: 1, '3m': 3, '5m': 5, '12m': 12 };
-  const historyData = periodFilter === '5d' && dailyData.length >= 3
-    ? dailyData.slice(-5)
-    : (monthlyAgg.length > 0 ? monthlyAgg : dailyData).slice(-(monthCounts[periodFilter] ?? 12));
+  function getCarryForward(target: string): number {
+    const sorted = [...dailyData].sort((a, b) => a.date.localeCompare(b.date));
+    let last = 0;
+    for (const entry of sorted) {
+      if (entry.date > target) break;
+      last = entry.value;
+    }
+    return last;
+  }
+
+  function generateDays(dates: string[]): any[] {
+    return dates.map(d => ({ month: d.slice(5), value: getCarryForward(d), date: d }));
+  }
+
+  const todayUd = new Date();
+  const curYearUd = todayUd.getFullYear();
+  const curMonthUd = todayUd.getMonth() + 1;
+  const evo3mColors = ['#3B82F6', '#8B5CF6', '#DC3545'];
+
+  const historyData = dailyData.length > 0
+    ? (() => {
+        if (periodFilter === '5d') return dailyData.slice(-5).map(d => ({ month: d.date.slice(5), value: d.value }));
+        if (periodFilter === '15d') {
+          const dates: string[] = [];
+          for (let i = 14; i >= 0; i--) {
+            const d = new Date(todayUd);
+            d.setDate(d.getDate() - i);
+            dates.push(d.toISOString().slice(0, 10));
+          }
+          return generateDays(dates);
+        }
+        if (periodFilter === 'month') {
+          const lastDay = new Date(curYearUd, curMonthUd, 0).getDate();
+          const dates: string[] = [];
+          for (let d = 1; d <= lastDay; d += 2) {
+            dates.push(`${curYearUd}-${String(curMonthUd).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+          }
+          return generateDays(dates);
+        }
+        if (periodFilter === '3m') {
+          const result: any[] = [];
+          for (let i = 2; i >= 0; i--) {
+            const d = new Date(curYearUd, curMonthUd - i - 1, 1);
+            const y = d.getFullYear();
+            const m = d.getMonth() + 1;
+            const lastDay = new Date(y, m, 0).getDate();
+            const days = [1, 6, 12, 18, lastDay];
+            for (const day of days) {
+              const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              result.push({ month: dateStr.slice(5), value: getCarryForward(dateStr), color: evo3mColors[i] });
+            }
+          }
+          return result;
+        }
+        const count = periodFilter === '5m' ? 5 : 12;
+        return (monthlyAgg.length > 0 ? monthlyAgg : dailyData.map(d => ({ month: d.date.slice(5), value: d.value }))).slice(-count);
+      })()
+    : [];
 
   const metrics = [
     { label: 'TCEs Ativos', value: String(unit?.tces ?? 0), sub: '+8 este mês' },
@@ -185,7 +233,11 @@ export default function UnidadeDetalhePage() {
                   }
                   return meses[parseInt(label, 10) - 1] || label;
                 }} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
-                <Line type="monotone" dataKey="value" stroke="#DC3545" strokeWidth={2} dot={{ r: 3, fill: '#DC3545' }} />
+                <Line type="monotone" dataKey="value" stroke="#DC3545" strokeWidth={2} dot={(props: any) => {
+                  const { cx, cy, payload } = props;
+                  if (cx == null || cy == null) return null;
+                  return <circle cx={cx} cy={cy} r={4} fill={payload?.color || '#DC3545'} stroke="#fff" strokeWidth={1} />;
+                }} />
               </LineChart>
             </ResponsiveContainer>
             <div className="flex justify-center gap-2 mt-1 text-[9px] text-muted-foreground">

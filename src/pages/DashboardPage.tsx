@@ -56,7 +56,7 @@ export default function DashboardPage() {
           total: Object.values(units).reduce((s, v) => s + v, 0),
         })).sort((a, b) => a.month.localeCompare(b.month));
         const dayData = Object.entries(byDay).map(([date, units]) => ({
-          date: date.slice(5),
+          date,
           total: Object.values(units).reduce((s, v) => s + v, 0),
         })).sort((a, b) => a.date.localeCompare(b.date));
         setTotalHistory(monthData);
@@ -116,23 +116,79 @@ export default function DashboardPage() {
   const atencao = units.filter((u) => u.status === 'Atenção').length;
   const critico = units.filter((u) => u.status === 'Crítico').length;
 
-  function formatMonth(m: string): string {
-    const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    return meses[parseInt(m, 10) - 1] || m;
+  const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+  function getCarryForward(target: string, source: { date: string; total: number }[]): number {
+    const sorted = [...source].sort((a, b) => a.date.localeCompare(b.date));
+    let last = 0;
+    for (const entry of sorted) {
+      if (entry.date > target) break;
+      last = entry.total;
+    }
+    return last;
   }
+
+  function generateDays(dates: string[]): any[] {
+    return dates.map(d => ({ date: d, total: getCarryForward(d, dailyHistory) }));
+  }
+
+  function generateMonthDays(year: number, month: number, step: number): string[] {
+    const lastDay = new Date(year, month, 0).getDate();
+    const days: string[] = [];
+    for (let d = 1; d <= lastDay; d += step) {
+      days.push(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+    }
+    return days;
+  }
+
+  const evo3mColors = ['#3B82F6', '#8B5CF6', '#DC3545'];
 
   function formatDateLabel(label: string): string {
     if (label.includes('-')) {
-      const [m, d] = label.split('-');
-      return `${parseInt(d, 10)}/${formatMonth(m)}`;
+      const parts = label.split('-');
+      if (parts.length === 3) {
+        return `${parseInt(parts[2], 10)}/${meses[parseInt(parts[1], 10) - 1]}`;
+      }
+      return `${parseInt(parts[1], 10)}/${meses[parseInt(parts[0], 10) - 1]}`;
     }
-    return formatMonth(label);
+    return meses[parseInt(label, 10) - 1] || label;
   }
+
+  const today = new Date();
+  const curYear = today.getFullYear();
+  const curMonth = today.getMonth() + 1;
 
   const evoData: any[] = chartMetric === 'tces'
     ? (() => {
         if (evoPeriod === '5d' && dailyHistory.length >= 3) {
           return dailyHistory.slice(-5);
+        }
+        if (evoPeriod === '15d' && dailyHistory.length > 0) {
+          const dates: string[] = [];
+          for (let i = 14; i >= 0; i--) {
+            const d = new Date(today);
+            d.setDate(d.getDate() - i);
+            dates.push(d.toISOString().slice(0, 10));
+          }
+          return generateDays(dates);
+        }
+        if (evoPeriod === '1m' && dailyHistory.length > 0) {
+          return generateDays(generateMonthDays(curYear, curMonth, 2));
+        }
+        if (evoPeriod === '3m' && dailyHistory.length > 0) {
+          const result: any[] = [];
+          for (let i = 2; i >= 0; i--) {
+            const d = new Date(curYear, curMonth - i - 1, 1);
+            const y = d.getFullYear();
+            const m = d.getMonth() + 1;
+            const lastDay = new Date(y, m, 0).getDate();
+            const days = [1, 6, 12, 18, lastDay];
+            for (const day of days) {
+              const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              result.push({ date: dateStr, total: getCarryForward(dateStr, dailyHistory), color: evo3mColors[i] });
+            }
+          }
+          return result;
         }
         const monthCounts: Record<string, number> = { '5d': 1, '15d': 1, '1m': 1, '3m': 3, '6m': 6, '12m': 12 };
         const count = monthCounts[evoPeriod] ?? 12;
@@ -260,7 +316,11 @@ export default function DashboardPage() {
               <LineChart data={evoData}>
                 <XAxis dataKey={evoData.length > 0 && 'date' in evoData[0] ? 'date' : 'month'} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(label: any) => formatDateLabel(label)} />
                 <Tooltip formatter={(value: any) => [`${value}${chartMetric === 'engagement' ? '%' : ' TCEs'}`, chartMetric === 'engagement' ? 'Engajamento' : 'Total']} labelFormatter={(label: any) => formatDateLabel(label)} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
-                <Line type="monotone" dataKey="total" stroke="#DC3545" strokeWidth={2} dot={{ r: 3, fill: '#DC3545' }} />
+                <Line type="monotone" dataKey="total" stroke="#DC3545" strokeWidth={2} dot={(props: any) => {
+                  const { cx, cy, payload } = props;
+                  if (cx == null || cy == null) return null;
+                  return <circle cx={cx} cy={cy} r={4} fill={payload?.color || '#DC3545'} stroke="#fff" strokeWidth={1} />;
+                }} />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
