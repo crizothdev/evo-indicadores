@@ -26,10 +26,7 @@ function findMockUser(email: string): User {
   return mockUsers.find((u) => u.email.startsWith(key)) ?? mockUsers[0];
 }
 
-const hasFirebaseConfig =
-  typeof import.meta !== 'undefined' &&
-  import.meta.env?.VITE_FIREBASE_API_KEY &&
-  import.meta.env.VITE_FIREBASE_API_KEY !== 'AIzaSyDemoKey';
+const hasFirebaseConfig = true;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
