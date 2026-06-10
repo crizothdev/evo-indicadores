@@ -65,7 +65,21 @@ export async function fetchUnit(id: string): Promise<Unit | null> {
     return localReadDoc<Unit>('units', id);
   }
   const data = await firestore.fetchUnit(id);
-  if (data) syncWrite('units', id, data as unknown as Record<string, unknown>);
+  if (data) {
+    syncWrite('units', id, data as unknown as Record<string, unknown>);
+    try {
+      const history = await firestore.fetchRawTCEHistory();
+      const unitHistory = history.filter(h => h.razaoSocial === data.nomeFantasia || h.razaoSocial === data.razaoSocial);
+      if (unitHistory.length > 0) {
+        unitHistory.sort((a, b) => a.date.localeCompare(b.date));
+        const latest = unitHistory[unitHistory.length - 1];
+        const d = new Date(latest.date + 'T00:00:00');
+        const prevDate = new Date(d.getFullYear(), d.getMonth(), 0).toISOString().slice(0, 10);
+        const prevEntry = unitHistory.find(h => h.date === prevDate);
+        data.growth = latest.totalTCE - (prevEntry?.totalTCE ?? 0);
+      }
+    } catch {}
+  }
   return data;
 }
 

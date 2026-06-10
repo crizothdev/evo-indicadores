@@ -2,14 +2,6 @@ import { collection, getDocs, getDoc, doc, addDoc, updateDoc, deleteDoc, setDoc,
 import { db } from '@/lib/firebase';
 import type { Unit, Notice, User, Top5Entry, FollowUp, Appointment, Role } from '@/types';
 
-function calcStatus(diff: number): string {
-  if (diff >= 10) return 'Destaque';
-  if (diff >= 0) return 'Operacional';
-  if (diff > -5) return 'Queda';
-  if (diff > -10) return 'Atenção';
-  return 'Crítico';
-}
-
 // Units
 export async function fetchUnits(): Promise<Unit[]> {
   const snap = await getDocs(collection(db, 'units'));
@@ -174,34 +166,7 @@ export async function saveTCEImport(batch: { date: string; rows: { razaoSocial: 
     await addDoc(collection(db, 'tce_history'), { date: isoDate, razaoSocial: razao, totalTCE: total, createdAt: serverTimestamp() });
     const unitSnap = await getDocs(query(collection(db, 'units'), where('nomeFantasia', '==', razao)));
     if (!unitSnap.empty) {
-      const baseline = baselineData[razao] ?? 0;
-      const diff = total - baseline;
-      const status = calcStatus(diff);
-      await updateDoc(doc(db, 'units', unitSnap.docs[0].id), { tces: total, growth: diff, status });
-    }
-  }
-
-  const allUnits = await getDocs(collection(db, 'units'));
-  const ranked = allUnits.docs.map(d => ({ id: d.id, tces: d.data().tces ?? 0 })).sort((a, b) => b.tces - a.tces);
-  for (let i = 0; i < ranked.length; i++) {
-    await updateDoc(doc(db, 'units', ranked[i].id), { ranking: i + 1 });
-  }
-
-  for (const unitDoc of allUnits.docs) {
-    const growth = unitDoc.data().growth as number ?? 0;
-    await updateDoc(doc(db, 'units', unitDoc.id), { status: calcStatus(growth) });
-  }
-
-  const top5Snap = await getDocs(collection(db, 'top5_audit'));
-  for (const entry of top5Snap.docs) {
-    const data = entry.data();
-    if (data.status === 'Aprovada' || data.status === 'Pendente') {
-      const unitSnap = await getDocs(query(collection(db, 'units'), where('nomeFantasia', '==', data.name)));
-      const growth = unitSnap.empty ? 0 : (unitSnap.docs[0].data().growth as number ?? 0);
-      const diff = parseInt(data.growth?.replace('%', '').replace('+', '') ?? '0', 10);
-      if (growth < 0 || diff < 0) {
-        await updateDoc(doc(db, 'top5_audit', entry.id), { status: 'Rejeitada' });
-      }
+      await updateDoc(doc(db, 'units', unitSnap.docs[0].id), { tces: total });
     }
   }
 
