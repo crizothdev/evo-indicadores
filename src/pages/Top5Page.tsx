@@ -14,8 +14,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { Trophy, CheckCircle, XCircle, Loader2, History } from 'lucide-react';
-import { collection, getDocs, addDoc, doc, deleteDoc, query, where, orderBy } from 'firebase/firestore';
+import { Trophy, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { collection, getDocs, addDoc, doc, deleteDoc, updateDoc, query, where, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Role } from '@/types';
 
@@ -44,10 +44,11 @@ export default function Top5Page() {
   const [auditPayment, setAuditPayment] = useState('OK');
   const [saving, setSaving] = useState(false);
   const [viewMonth, setViewMonth] = useState(new Date().getMonth() + 1);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualMonth, setManualMonth] = useState<string>('');
   const [manualPositions, setManualPositions] = useState<string[]>(['', '', '', '', '']);
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
 
   const year = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1;
@@ -95,7 +96,6 @@ export default function Top5Page() {
     return { ...u, growth, growthOk: growth > 0, engagement, engagementOk: engagement >= 80 };
   }).filter(c => c.growthOk).sort((a, b) => b.growth - a.growth) : [];
 
-  const monthsWithEntries = [...new Set(entries.map(e => e.month).filter((m): m is string => !!m))].sort();
   const growthMap = Object.fromEntries(units.map(u => [u.nomeFantasia, u.growth]));
 
   const handleOpenAudit = (unit: typeof candidates[0]) => {
@@ -165,6 +165,20 @@ export default function Top5Page() {
     }
   };
 
+  const handleFinalize = async () => {
+    setFinalizing(true);
+    try {
+      const monthEntries = entries.filter(e => e.month === monthKey && e.status !== 'Aprovada' && e.status !== 'Rejeitada');
+      for (const entry of monthEntries) {
+        await updateDoc(doc(db, 'top5_audit', (entry as any).id), { status: 'Aprovada' });
+      }
+      queryClient.invalidateQueries({ queryKey: ['top5'] });
+      setFinalizeOpen(false);
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-5">
@@ -191,15 +205,10 @@ export default function Top5Page() {
               {entries.filter(e => e.status === 'Aprovada' && e.month === monthKey).length} Aprovada
             </Badge>
           </div>
-          {canAudit && (
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setHistoryOpen(true)}>
-              <History className="h-4 w-4" /> Histórico
-            </Button>
-          )}
         </div>
       </PageHeader>
 
-      {entries.length > 0 && (
+      {entries.filter(e => e.month === monthKey).length > 0 && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2"><Trophy className="h-4 w-4 text-yellow-500" /> TOP 5</CardTitle>
@@ -219,7 +228,7 @@ export default function Top5Page() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.filter(e => !e.month || e.month === monthKey).sort((a, b) => a.pos - b.pos).map((entry) => (
+                {entries.filter(e => e.month === monthKey).sort((a, b) => a.pos - b.pos).map((entry) => (
                   <TableRow key={(entry as any).id ?? entry.name} style={{ opacity: entry.status === 'Rejeitada' ? 0.4 : 1 }}>
                     <TableCell>
                       <div style={{ width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, color: '#fff', background: entry.pos <= 3 ? (entry.pos === 1 ? '#FFC107' : entry.pos === 2 ? '#9E9E9E' : '#CD7F32') : '#BDBDBD' }}>{entry.pos}</div>
@@ -252,97 +261,68 @@ export default function Top5Page() {
         </Card>
       )}
 
-      {isCurrentMonth && canAudit && candidates.filter(c => !entries.find(e => e.name === c.nomeFantasia)).length > 0 && (
+      {isCurrentMonth && canAudit && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2"><Trophy className="h-4 w-4 text-yellow-500" /> Candidatos Elegíveis</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">#</TableHead>
-                  <TableHead>Unidade</TableHead>
-                  <TableHead className="text-right">Desempenho (mês)</TableHead>
-                  <TableHead className="text-center">Engajamento</TableHead>
-                  <TableHead className="text-center">Social</TableHead>
-                  <TableHead className="text-center">Pagamento</TableHead>
-                  <TableHead className="text-center">Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {candidates.filter(c => !entries.find(e => e.name === c.nomeFantasia)).map((c, i) => (
-                  <TableRow key={c.id}>
-                    <TableCell><span className="font-bold text-sm">{i + 1}</span></TableCell>
-                    <TableCell className="font-medium">{c.nomeFantasia}</TableCell>
-                    <TableCell className={`text-right font-semibold ${c.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>{c.growth >= 0 ? '+' : ''}{c.growth}</TableCell>
-                    <TableCell className="text-center"><span style={{ color: c.engagementOk ? '#2E7D32' : '#F57F17' }}>{c.engagement}%</span></TableCell>
-                    <TableCell className="text-center"><span style={{ color: '#9E9E9E' }}>—</span></TableCell>
-                    <TableCell className="text-center"><span style={{ color: '#9E9E9E' }}>—</span></TableCell>
-                    <TableCell className="text-center"><span style={{ fontSize: '12px', color: '#9E9E9E' }}>Pendente</span></TableCell>
-                    <TableCell className="text-right">
-                      <button type="button" onClick={() => handleOpenAudit(c)} style={{ padding: '4px 12px', background: '#DC3545', color: '#fff', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '12px' }}>Auditar</button>
-                    </TableCell>
+            {candidates.filter(c => !entries.find(e => e.name === c.nomeFantasia)).length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">#</TableHead>
+                    <TableHead>Unidade</TableHead>
+                    <TableHead className="text-right">Desempenho (mês)</TableHead>
+                    <TableHead className="text-center">Engajamento</TableHead>
+                    <TableHead className="text-center">Social</TableHead>
+                    <TableHead className="text-center">Pagamento</TableHead>
+                    <TableHead className="text-center">Status</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {candidates.filter(c => !entries.find(e => e.name === c.nomeFantasia)).map((c, i) => (
+                    <TableRow key={c.id}>
+                      <TableCell><span className="font-bold text-sm">{i + 1}</span></TableCell>
+                      <TableCell className="font-medium">{c.nomeFantasia}</TableCell>
+                      <TableCell className={`text-right font-semibold ${c.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>{c.growth >= 0 ? '+' : ''}{c.growth}</TableCell>
+                      <TableCell className="text-center"><span style={{ color: c.engagementOk ? '#2E7D32' : '#F57F17' }}>{c.engagement}%</span></TableCell>
+                      <TableCell className="text-center"><span style={{ color: '#9E9E9E' }}>—</span></TableCell>
+                      <TableCell className="text-center"><span style={{ color: '#9E9E9E' }}>—</span></TableCell>
+                      <TableCell className="text-center"><span style={{ fontSize: '12px', color: '#9E9E9E' }}>Pendente</span></TableCell>
+                      <TableCell className="text-right">
+                        <button type="button" onClick={() => handleOpenAudit(c)} style={{ padding: '4px 12px', background: '#DC3545', color: '#fff', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '12px' }}>Auditar</button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-8">Nenhum candidato disponível para este mês.</p>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {entries.filter(e => !e.month || e.month === monthKey).length === 0 && (!isCurrentMonth || !canAudit || candidates.filter(c => !entries.find(e => e.name === c.nomeFantasia)).length === 0) && (
+      {entries.filter(e => e.month === monthKey).length === 0 && !isCurrentMonth && (
         <Card>
           <CardContent style={{ padding: '32px', textAlign: 'center' }}>
             <Trophy className="h-8 w-8" style={{ color: '#FFC107', margin: '0 auto 8px' }} />
             <p style={{ fontSize: '14px', fontWeight: 600, color: '#666' }}>{['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][viewMonth - 1]}</p>
-            <p style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>{isCurrentMonth ? 'Nenhum candidato disponível para este mês.' : 'Nenhum dado histórico disponível para este mês.'}</p>
+            <p style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>Nenhum registro para este mês.</p>
+            {canAudit && (
+              <Button size="sm" className="mt-4" onClick={() => {
+                setManualMonth(monthKey);
+                setManualPositions(['', '', '', '', '']);
+                setManualOpen(true);
+              }}>Inserir Manualmente</Button>
+            )}
           </CardContent>
         </Card>
       )}
 
-      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Histórico TOP 5</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            {monthsWithEntries.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Nenhum mês com registro.</p>
-            ) : (
-              monthsWithEntries.map(m => {
-                const monthEntries = entries.filter(e => e.month === m).sort((a, b) => a.pos - b.pos);
-                return (
-                  <Card key={m}>
-                    <CardContent style={{ padding: '12px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <span style={{ fontWeight: 600, fontSize: '14px' }}>
-                          {['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][parseInt(m.split('-')[1], 10) - 1]} {m.split('-')[0]}
-                        </span>
-                        <Button size="sm" variant="outline" onClick={() => {
-                          setManualMonth(m);
-                          const existing = monthEntries.map(e => e.name);
-                          const filled = ['', '', '', '', ''];
-                          existing.forEach((name, i) => { if (i < 5) filled[i] = name; });
-                          setManualPositions(filled);
-                          setHistoryOpen(false);
-                          setManualOpen(true);
-                        }}>Inserir Manualmente</Button>
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>
-                        {monthEntries.map((e, i) => (
-                          <span key={e.name} style={{ display: 'block', padding: '2px 0' }}>
-                            <strong>{e.pos}.</strong> {e.name} — {e.status}
-                          </span>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+
 
       <Dialog open={manualOpen} onOpenChange={setManualOpen}>
         <DialogContent>
