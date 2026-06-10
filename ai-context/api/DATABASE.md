@@ -15,8 +15,8 @@
 | `nomeFantasia` | string | Nome fantasia |
 | `status` | string | Operacional / Critica / Em Acompanhamento |
 | `tces` | number | Quantidade de TCEs ativos |
-| `growth` | number | Crescimento percentual |
-| `engagement` | number | Percentual de engajamento |
+| `growth` | number | **Calculado em tempo de exibição** — diferenca entre o TCE mais recente e o último dia do mês anterior. O valor salvo não é autoritativo. |
+| `engagement` | number | **Calculado em tempo de exibição** — percentual de presença em treinamentos. O valor salvo não é autoritativo. |
 | `ranking` | number | Posição no ranking |
 | `trend` | string | up / down / stable |
 | `createdAt` | timestamp | Data de criação |
@@ -26,10 +26,10 @@
 | Campo | Tipo | Descrição |
 |---|---|---|
 | `id` | string | ID do documento |
-| `unitId` | string | Referência à unidade |
+| `razaoSocial` | string | Razão social da unidade (usada para lookup) |
 | `date` | string | Data (YYYY-MM-DD) |
 | `totalTCE` | number | Total de TCEs no dia |
-| `importedAt` | timestamp | Data de importação |
+| `createdAt` | timestamp | Data de importação |
 
 ### `training_presence`
 

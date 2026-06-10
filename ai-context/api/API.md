@@ -1,6 +1,8 @@
 # API.md — Interface de Serviços
 
 > Métodos públicos dos serviços do app. Firebase Auth + Firestore.
+>
+> **Filosofia:** Apenas dados brutos são salvos no banco. Cálculos (crescimento, engajamento, status) são feitos em tempo de exibição pelo frontend — `growth` salvo na importação não é autoritativo.
 
 ---
 
@@ -65,7 +67,8 @@
 
 | Método | Retorno | Descrição |
 |---|---|---|
-| `fetchTCEHistory(unitId?)` | `Promise<{date, totalTCE}[]>` | Histórico de TCEs |
+| `fetchTCEHistory(unitId?)` | `Promise<{date, totalTCE}[]>` | Histórico de TCEs (para gráficos) |
+| `fetchRawTCEHistory()` | `Promise<{date, razaoSocial, totalTCE}[]>` | Histórico bruto com nome da unidade (para cálculo de growth) |
 | `fetchTrainingPresence(unitId?)` | `Promise<{trainingDate, present}[]>` | Presença em treinamentos |
 
 ## CSVParser (`src/services/csvParser.ts`)

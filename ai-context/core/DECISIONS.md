@@ -36,6 +36,14 @@
 **Racional:** Projeto com 13 telas, sem complexidade que justifique estrutura feature-based. Simplicidade acima de tudo.
 **Arquivos:** `src/pages/`, `src/components/shared/`
 
+### 2026-06-10 — Cálculos em tempo de exibição (não salvos)
+**Decisão:** Nenhum cálculo (crescimento, engajamento, status) é salvo como verdade absoluta no Firestore. O `growth` salvo durante a importação de CSV é apenas um snapshot. O frontend recalcula tudo ao exibir:
+- **Crescimento** (`dataService.ts`): TCE mais recente − TCE do último dia do mês anterior, buscado do `tce_history`
+- **Engajamento** (páginas de dashboard): % de presença em treinamentos, calculado do `training_presence`
+- **Status** (`calcStatus`): derivado do crescimento no momento da exibição
+**Racional:** Dados brutos são a fonte da verdade; cálculos mudam com a lógica de negócio sem necessidade de migração de dados.
+**Arquivos:** `src/services/dataService.ts`, `src/services/firestoreService.ts`
+
 ### 2026-05-24 — CSV parser no frontend
 **Decisão:** Parser de CSV implementado no frontend (sem cloud function).
 **Racional:** MVP simples, sem custo extra de Firebase Functions, processamento leve de CSV.
