@@ -96,6 +96,7 @@ export default function Top5Page() {
   }).filter(c => c.growthOk).sort((a, b) => b.growth - a.growth) : [];
 
   const monthsWithEntries = [...new Set(entries.map(e => e.month).filter((m): m is string => !!m))].sort();
+  const growthMap = Object.fromEntries(units.map(u => [u.nomeFantasia, u.growth]));
 
   const handleOpenAudit = (unit: typeof candidates[0]) => {
     setAuditTarget({ unit: unit.nomeFantasia, growth: unit.growth, engagement: unit.engagement });
@@ -224,7 +225,9 @@ export default function Top5Page() {
                       <div style={{ width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, color: '#fff', background: entry.pos <= 3 ? (entry.pos === 1 ? '#FFC107' : entry.pos === 2 ? '#9E9E9E' : '#CD7F32') : '#BDBDBD' }}>{entry.pos}</div>
                     </TableCell>
                     <TableCell className="font-medium">{entry.name}</TableCell>
-                    <TableCell className={`text-right font-semibold ${entry.growth.startsWith('+') || !entry.growth.startsWith('-') ? 'text-green-600' : 'text-red-600'}`}>{entry.growth.replace('%', '')}</TableCell>
+                    <TableCell className={`text-right font-semibold ${(growthMap[entry.name] ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {growthMap[entry.name] !== undefined ? `${growthMap[entry.name] >= 0 ? '+' : ''}${growthMap[entry.name]}` : entry.growth.replace('%', '')}
+                    </TableCell>
                     <TableCell className="text-center"><span style={{ color: trainingData[entry.name] ? '#2E7D32' : '#F57F17', fontWeight: 600 }}>{trainingData[entry.name] ? Math.round((trainingData[entry.name].attended / trainingData[entry.name].total) * 100) + '%' : '0%'}</span></TableCell>
                     <TableCell className="text-center"><span style={{ color: entry.social === 'OK' ? '#2E7D32' : '#F57F17', fontWeight: 600 }}>{entry.social}</span></TableCell>
                     <TableCell className="text-center"><span style={{ color: entry.payment === 'OK' ? '#2E7D32' : '#F57F17', fontWeight: 600 }}>{entry.payment}</span></TableCell>
