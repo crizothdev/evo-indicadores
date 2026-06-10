@@ -97,6 +97,8 @@ export default function Top5Page() {
   }).filter(c => c.growthOk).sort((a, b) => b.growth - a.growth) : [];
 
   const growthMap = Object.fromEntries(units.map(u => [u.nomeFantasia, u.growth]));
+  const monthEntries = entries.filter(e => e.month === monthKey);
+  const hasNegativeEntry = monthEntries.some(e => (growthMap[e.name] ?? 0) < 0);
 
   const handleOpenAudit = (unit: typeof candidates[0]) => {
     setAuditTarget({ unit: unit.nomeFantasia, growth: unit.growth, engagement: unit.engagement });
@@ -205,15 +207,26 @@ export default function Top5Page() {
               {entries.filter(e => e.status === 'Aprovada' && e.month === monthKey).length} Aprovada
             </Badge>
           </div>
+          {isCurrentMonth && canAudit && monthEntries.length > 0 && (
+            <Button size="sm" disabled={hasNegativeEntry} onClick={() => setFinalizeOpen(true)}
+              style={{ background: hasNegativeEntry ? '#ccc' : '#DC3545', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 16px', fontSize: '13px', cursor: hasNegativeEntry ? 'not-allowed' : 'pointer' }}>
+              Finalizar TOP 5
+            </Button>
+          )}
         </div>
       </PageHeader>
 
-      {entries.filter(e => e.month === monthKey).length > 0 && (
+      {monthEntries.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2"><Trophy className="h-4 w-4 text-yellow-500" /> TOP 5</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
+            {hasNegativeEntry && (
+              <div style={{ padding: '8px 12px', marginBottom: '8px', borderRadius: '6px', background: '#FFF0F0', color: '#C62828', fontSize: '12px', fontWeight: 600 }}>
+                Unidades com desempenho negativo não podem ser finalizadas.
+              </div>
+            )}
             <Table>
               <TableHeader>
                 <TableRow>
@@ -228,10 +241,12 @@ export default function Top5Page() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.filter(e => e.month === monthKey).sort((a, b) => a.pos - b.pos).map((entry) => (
-                  <TableRow key={(entry as any).id ?? entry.name} style={{ opacity: entry.status === 'Rejeitada' ? 0.4 : 1 }}>
+                {monthEntries.sort((a, b) => a.pos - b.pos).map((entry) => {
+                  const isNegative = (growthMap[entry.name] ?? 0) < 0;
+                  return (
+                  <TableRow key={(entry as any).id ?? entry.name} style={{ opacity: entry.status === 'Rejeitada' ? 0.4 : 1, background: isNegative ? '#FFF0F0' : undefined }}>
                     <TableCell>
-                      <div style={{ width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, color: '#fff', background: entry.pos <= 3 ? (entry.pos === 1 ? '#FFC107' : entry.pos === 2 ? '#9E9E9E' : '#CD7F32') : '#BDBDBD' }}>{entry.pos}</div>
+                      <div style={{ width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, color: '#fff', background: isNegative ? '#DC3545' : (entry.pos <= 3 ? (entry.pos === 1 ? '#FFC107' : entry.pos === 2 ? '#9E9E9E' : '#CD7F32') : '#BDBDBD') }}>{entry.pos}</div>
                     </TableCell>
                     <TableCell className="font-medium">{entry.name}</TableCell>
                     <TableCell className={`text-right font-semibold ${(growthMap[entry.name] ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -254,7 +269,8 @@ export default function Top5Page() {
                       </TableCell>
                     )}
                   </TableRow>
-                ))}
+                );
+              })}
               </TableBody>
             </Table>
           </CardContent>
@@ -353,6 +369,23 @@ export default function Top5Page() {
             <Button variant="outline" onClick={() => setManualOpen(false)}>Cancelar</Button>
             <Button onClick={handleManualSave} disabled={saving || manualPositions.every(p => !p)}>
               {saving ? 'Salvando...' : 'Salvar TOP 5'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={finalizeOpen} onOpenChange={setFinalizeOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Finalizar TOP 5</DialogTitle></DialogHeader>
+          <p style={{ fontSize: '14px', color: '#666', marginBottom: '16px' }}>
+            {hasNegativeEntry
+              ? 'Não é possível finalizar o TOP 5 enquanto houver unidades com desempenho negativo no mês. Remova ou substitua as unidades em vermelho.'
+              : 'Tem certeza que deseja finalizar o TOP 5 deste mês? Todas as pendências serão aprovadas.'}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFinalizeOpen(false)}>Cancelar</Button>
+            <Button onClick={handleFinalize} disabled={finalizing || hasNegativeEntry} style={{ background: '#DC3545', color: '#fff' }}>
+              {finalizing ? 'Finalizando...' : 'Sim, Finalizar'}
             </Button>
           </DialogFooter>
         </DialogContent>
