@@ -54,6 +54,11 @@
 **Racional:** Evita mostrar links que o usuário não pode acessar, reduz poluição visual para roles limitados.
 **Arquivos:** `src/components/layout/Sidebar.tsx`, `src/lib/roles.ts`
 
+### 2026-06-10 — Panorama Mensal (backlog)
+**Decisão:** Futuramente, criar coleção `panoramas` com snapshot mensal (último dia do mês) como fonte única para relatórios.
+**Racional:** Hoje os relatórios recalculam tudo do `tce_history`. Com `panoramas`, a consulta histórica será instantânea e consistente.
+**Arquivos:** `ai-context/api/DATABASE.md` (schema documentado)
+
 ## Limitações Conhecidas
 
 - Firebase usa fallback mock no modo dev; para produção é necessário configurar `.env` com chaves reais

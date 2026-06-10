@@ -87,6 +87,28 @@
 | `notes` | string | Observações |
 | `status` | string | Status do acompanhamento |
 
+### `panoramas` (backlog — módulo de relatórios)
+
+Snapshot mensal do último dia do mês. Fonte única para relatórios históricos.
+
+Documento por mês (`YYYY-MM`):
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `id` | string | Mês de referência (YYYY-MM) |
+| `geradoEm` | timestamp | Data de geração |
+| `franqueadora` | object | Nível rede |
+| `franqueadora.unidades` | number | Total de unidades ativas |
+| `franqueadora.totalTCEs` | number | Soma de TCEs da rede |
+| `franqueadora.engajamentoMedio` | number | Média de engajamento |
+| `unidades` | array | Dados individuais |
+| `unidades[].nome` | string | Nome da unidade |
+| `unidades[].tces` | number | TCEs no fechamento |
+| `unidades[].crescimento` | number | Diferença vs mês anterior |
+| `unidades[].engajamento` | number | % presença treinamentos |
+| `unidades[].status` | string | Destaque/Operacional/Queda/Atenção/Crítico |
+| `unidades[].ranking` | number | Posição no ranking mensal |
+
 ### `appointments`
 
 | Campo | Tipo | Descrição |

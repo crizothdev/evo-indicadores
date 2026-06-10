@@ -78,14 +78,14 @@ export default function Top5Page() {
     })();
   }, []);
 
-  const candidates = isCurrentMonth ? units.map(u => {
+  const candidates = units.map(u => {
     const curr = unitMonthly[u.nomeFantasia]?.[monthKey] ?? 0;
     const prev = unitMonthly[u.nomeFantasia]?.[prevMonthKey] ?? 0;
     const growth = prev > 0 ? Math.round(((curr - prev) / prev) * 100) : curr > 0 ? 100 : 0;
     const train = trainingData[u.nomeFantasia];
     const engagement = train ? Math.round((train.attended / train.total) * 100) : 0;
     return { ...u, growth, growthOk: growth > 0, engagement, engagementOk: engagement >= 80 };
-  }).filter(c => c.growthOk).sort((a, b) => b.growth - a.growth) : [];
+  }).filter(c => c.growthOk).sort((a, b) => b.growth - a.growth);
 
   const handleOpenAudit = (unit: typeof candidates[0]) => {
     setAuditTarget({ unit: unit.nomeFantasia, growth: unit.growth, engagement: unit.engagement });
@@ -204,7 +204,7 @@ export default function Top5Page() {
         </Card>
       )}
 
-      {isCurrentMonth && canAudit && candidates.filter(c => !entries.find(e => e.name === c.nomeFantasia)).length > 0 && (
+      {canAudit && candidates.filter(c => !entries.find(e => e.name === c.nomeFantasia)).length > 0 && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2"><Trophy className="h-4 w-4 text-yellow-500" /> Candidatos Elegíveis</CardTitle>
@@ -244,12 +244,12 @@ export default function Top5Page() {
         </Card>
       )}
 
-      {entries.filter(e => !e.month || e.month === monthKey).length === 0 && (!isCurrentMonth || !canAudit || candidates.filter(c => !entries.find(e => e.name === c.nomeFantasia)).length === 0) && (
+      {entries.filter(e => !e.month || e.month === monthKey).length === 0 && (!canAudit || candidates.filter(c => !entries.find(e => e.name === c.nomeFantasia)).length === 0) && (
         <Card>
           <CardContent style={{ padding: '32px', textAlign: 'center' }}>
             <Trophy className="h-8 w-8" style={{ color: '#FFC107', margin: '0 auto 8px' }} />
             <p style={{ fontSize: '14px', fontWeight: 600, color: '#666' }}>{['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][viewMonth - 1]}</p>
-            <p style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>{isCurrentMonth ? 'Nenhum candidato disponível para este mês.' : 'Nenhum dado histórico disponível para este mês.'}</p>
+            <p style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>Nenhum candidato disponível para este mês.</p>
           </CardContent>
         </Card>
       )}

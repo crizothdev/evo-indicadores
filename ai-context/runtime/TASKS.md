@@ -26,6 +26,21 @@
 - **Firebase Functions**: backend para processamento pesado de CSV
 - **PWA**: service worker para offline-first
 
+## Backlog — Módulo de Relatórios
+
+### Panorama Mensal (screenshot do último dia do mês)
+Criar coleção `panoramas` no Firestore com um documento por mês:
+- **Nível franqueadora**: total de unidades, total de TCEs, engajamento médio da rede
+- **Nível unidade**: TCEs, crescimento (vs mês anterior), engajamento, status, posição no ranking
+- **Objetivo**: fonte única para relatórios históricos, eliminando necessidade de recalcular de `tce_history` toda vez
+- **Geração**: ao importar CSV do último dia do mês, gerar o panorama automaticamente; ou botão "Fechar Mês"
+- **Consumo**: módulo `/relatorios` buscará desses dados
+
+### Inserção manual de TOP 5 de meses anteriores
+- Permitir na página `/top5` selecionar mês/ano e auditar/promover unidades manualmente
+- Hoje só funciona para o mês corrente (candidatos elegíveis)
+- Necessário: buscar dados do `tce_history` do mês selecionado, calcular candidatos, permitir auditoria
+
 ## Pós-MVP
 
 - **Dark mode**: toggle light/dark (tokens já definidos no index.css)
