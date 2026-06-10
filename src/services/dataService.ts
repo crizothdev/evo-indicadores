@@ -35,6 +35,27 @@ export async function fetchUnits(): Promise<Unit[]> {
   }
   const data = await firestore.fetchUnits();
   data.forEach((u) => syncWrite('units', u.id, u as unknown as Record<string, unknown>));
+  try {
+    const history = await firestore.fetchRawTCEHistory();
+    const byUnit: Record<string, { date: string; total: number }[]> = {};
+    for (const h of history) {
+      if (!byUnit[h.razaoSocial]) byUnit[h.razaoSocial] = [];
+      byUnit[h.razaoSocial].push({ date: h.date, total: h.totalTCE });
+    }
+    for (const unit of data) {
+      const unitHistory = byUnit[unit.nomeFantasia] || byUnit[unit.razaoSocial];
+      if (unitHistory && unitHistory.length > 0) {
+        unitHistory.sort((a, b) => a.date.localeCompare(b.date));
+        const latest = unitHistory[unitHistory.length - 1];
+        const d = new Date(latest.date + 'T00:00:00');
+        const lastPrevMonth = new Date(d.getFullYear(), d.getMonth(), 0);
+        const prevDate = lastPrevMonth.toISOString().slice(0, 10);
+        const prevEntry = unitHistory.find(h => h.date === prevDate);
+        const baseline = prevEntry?.total ?? 0;
+        unit.growth = latest.total - baseline;
+      }
+    }
+  } catch {}
   return data;
 }
 

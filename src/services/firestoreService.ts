@@ -129,6 +129,11 @@ export async function fetchTCEHistory(unitId?: string): Promise<{ date: string; 
   return snap.docs.map(d => ({ date: d.data().date, totalTCE: d.data().totalTCE }));
 }
 
+export async function fetchRawTCEHistory(): Promise<{ date: string; razaoSocial: string; totalTCE: number }[]> {
+  const snap = await getDocs(collection(db, 'tce_history'));
+  return snap.docs.map(d => ({ date: d.data().date, razaoSocial: d.data().razaoSocial, totalTCE: d.data().totalTCE }));
+}
+
 export async function saveTCEImport(batch: { date: string; rows: { razaoSocial: string }[]; summary: Record<string, number> }): Promise<{ id: string; comparison: { razaoSocial: string; yesterday: number; today: number; diff: number }[] }> {
   const isoDate = batch.date.split('/').reverse().join('-');
 
