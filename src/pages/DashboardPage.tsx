@@ -258,7 +258,7 @@ export default function DashboardPage() {
             })}
           </div>
         </StatCard>
-        <StatCard label="Crescimento da Rede" value={`${avgGrowth >= 0 ? '+' : ''}${avgGrowth}`}>
+              <StatCard label="Desempenho (mês)" value={`${avgGrowth >= 0 ? '+' : ''}${avgGrowth}`}>
           <div style={{ display: 'flex', alignItems: 'flex-end', height: '35px', gap: '3px' }}>
             {months.map((m, i) => {
               const isFuture = i > currentMonthIndex;
@@ -389,7 +389,7 @@ export default function DashboardPage() {
                       <TableHead>Unidade</TableHead>
                       <TableHead>Situação</TableHead>
                       <TableHead>TCEs</TableHead>
-                      <TableHead>Cresc.</TableHead>
+                      <TableHead>Desemp. (mês)</TableHead>
                       <TableHead>Engaj.</TableHead>
                       <TableHead>Rank</TableHead>
                     </TableRow>

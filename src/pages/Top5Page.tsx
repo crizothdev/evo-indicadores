@@ -209,7 +209,7 @@ export default function Top5Page() {
                 <TableRow>
                   <TableHead className="w-12">#</TableHead>
                   <TableHead>Unidade</TableHead>
-                  <TableHead className="text-right">Crescimento</TableHead>
+                  <TableHead className="text-right">Desempenho (mês)</TableHead>
                   <TableHead className="text-center">Engajamento</TableHead>
                   <TableHead className="text-center">Social</TableHead>
                   <TableHead className="text-center">Pagamento</TableHead>
@@ -260,7 +260,7 @@ export default function Top5Page() {
                 <TableRow>
                   <TableHead className="w-12">#</TableHead>
                   <TableHead>Unidade</TableHead>
-                  <TableHead className="text-right">Crescimento</TableHead>
+                  <TableHead className="text-right">Desempenho (mês)</TableHead>
                   <TableHead className="text-center">Engajamento</TableHead>
                   <TableHead className="text-center">Social</TableHead>
                   <TableHead className="text-center">Pagamento</TableHead>

@@ -148,7 +148,7 @@ export default function UnidadeDetalhePage() {
 
   const metrics = [
     { label: 'TCEs Ativos', value: String(unit?.tces ?? 0), sub: '+8 este mês' },
-    { label: 'Crescimento', value: `${(unit?.growth ?? 0) >= 0 ? '+' : ''}${unit?.growth ?? 0}`, sub: '' },
+    { label: 'Desempenho (mês)', value: `${(unit?.growth ?? 0) >= 0 ? '+' : ''}${unit?.growth ?? 0}`, sub: '' },
     { label: 'Engajamento', value: `${unit?.engagement ?? 0}%`, sub: 'Presença treinamentos' },
     { label: 'Posição Ranking', value: `#${unit?.ranking ?? 0}`, sub: 'de 156 unidades' },
   ];

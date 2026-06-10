@@ -151,7 +151,7 @@ export default function FranquiaDashboardPage() {
 
   const metrics = [
     { label: 'TCEs Ativos', value: String(unit.tces), sub: '+8 este mês' },
-    { label: 'Crescimento', value: `${unit.growth >= 0 ? '+' : ''}${unit.growth} TCEs`, sub: '' },
+    { label: 'Desempenho (mês)', value: `${unit.growth >= 0 ? '+' : ''}${unit.growth} TCEs`, sub: '' },
     { label: 'Engajamento', value: `${unit.engagement}%`, sub: 'Presença treinamentos' },
     { label: 'Posição Ranking', value: `#${unit.ranking}`, sub: 'de 156 unidades' },
   ];
@@ -303,7 +303,7 @@ export default function FranquiaDashboardPage() {
                 <TableHead className="w-12">#</TableHead>
                 <TableHead>Unidade</TableHead>
                 <TableHead className="text-right">TCEs</TableHead>
-                <TableHead className="text-right">Crescimento</TableHead>
+                <TableHead className="text-right">Desempenho (mês)</TableHead>
                 <TableHead className="text-right">Ranking</TableHead>
               </TableRow>
             </TableHeader>

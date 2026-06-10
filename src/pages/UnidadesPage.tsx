@@ -121,7 +121,7 @@ export default function UnidadesPage() {
                   <TableHead>Razão Social</TableHead>
                   <TableHead>Situação</TableHead>
                   <TableHead className="text-right">TCEs</TableHead>
-                  <TableHead className="text-right">Crescimento</TableHead>
+                  <TableHead className="text-right">Desempenho (mês)</TableHead>
                   <TableHead className="text-right">Engajamento</TableHead>
                   <TableHead className="text-right">Ranking</TableHead>
                 </TableRow>
