@@ -2,6 +2,14 @@ import { collection, getDocs, getDoc, doc, addDoc, updateDoc, deleteDoc, setDoc,
 import { db } from '@/lib/firebase';
 import type { Unit, Notice, User, Top5Entry, FollowUp, Appointment, Role } from '@/types';
 
+function calcStatus(diff: number): string {
+  if (diff >= 10) return 'Destaque';
+  if (diff >= 0) return 'Operacional';
+  if (diff > -5) return 'Queda';
+  if (diff > -10) return 'Atenção';
+  return 'Crítico';
+}
+
 // Units
 export async function fetchUnits(): Promise<Unit[]> {
   const snap = await getDocs(collection(db, 'units'));
@@ -82,6 +90,10 @@ export async function updateTop5Entry(id: string, data: Partial<Top5Entry>): Pro
   await updateDoc(doc(db, 'top5_audit', id), { ...data, updatedAt: serverTimestamp() });
 }
 
+export async function deleteTop5Entry(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'top5_audit', id));
+}
+
 // Follow Up
 export async function fetchFollowUps(): Promise<FollowUp[]> {
   const snap = await getDocs(collection(db, 'follow_up'));
@@ -118,10 +130,18 @@ export async function fetchTCEHistory(unitId?: string): Promise<{ date: string; 
 }
 
 export async function saveTCEImport(batch: { date: string; rows: { razaoSocial: string }[]; summary: Record<string, number> }): Promise<{ id: string; comparison: { razaoSocial: string; yesterday: number; today: number; diff: number }[] }> {
-  const prevSnap = await getDocs(query(collection(db, 'tce_history'), orderBy('date', 'desc'), limit(1)));
+  const isoDate = batch.date.split('/').reverse().join('-');
+
+  const prevSnap = await getDocs(query(collection(db, 'tce_history'), orderBy('date', 'desc'), limit(100)));
+  const seenDates = new Set<string>();
   let prevDate = '';
-  if (!prevSnap.empty) {
-    prevDate = prevSnap.docs[0].data().date;
+  for (const d of prevSnap.docs) {
+    const date = d.data().date as string;
+    if (date !== isoDate && !seenDates.has(date)) {
+      prevDate = date;
+      break;
+    }
+    seenDates.add(date);
   }
 
   const yesterdayData: Record<string, number> = {};
@@ -134,9 +154,41 @@ export async function saveTCEImport(batch: { date: string; rows: { razaoSocial: 
 
   const ref = await addDoc(collection(db, 'tce_imports'), { ...batch, createdAt: serverTimestamp() });
   for (const [razao, total] of Object.entries(batch.summary)) {
-    const existing = await getDocs(query(collection(db, 'tce_history'), where('date', '==', batch.date), where('razaoSocial', '==', razao)));
-    if (existing.empty) {
-      await addDoc(collection(db, 'tce_history'), { date: batch.date, razaoSocial: razao, totalTCE: total, createdAt: serverTimestamp() });
+    const existing = await getDocs(query(collection(db, 'tce_history'), where('date', '==', isoDate), where('razaoSocial', '==', razao)));
+    if (!existing.empty) {
+      for (const d of existing.docs) await deleteDoc(doc(db, 'tce_history', d.id));
+    }
+    await addDoc(collection(db, 'tce_history'), { date: isoDate, razaoSocial: razao, totalTCE: total, createdAt: serverTimestamp() });
+    const unitSnap = await getDocs(query(collection(db, 'units'), where('nomeFantasia', '==', razao)));
+    if (!unitSnap.empty) {
+      const yesterday = yesterdayData[razao] ?? 0;
+      const diff = total - yesterday;
+      const status = calcStatus(diff);
+      await updateDoc(doc(db, 'units', unitSnap.docs[0].id), { tces: total, growth: diff, status });
+    }
+  }
+
+  const allUnits = await getDocs(collection(db, 'units'));
+  const ranked = allUnits.docs.map(d => ({ id: d.id, tces: d.data().tces ?? 0 })).sort((a, b) => b.tces - a.tces);
+  for (let i = 0; i < ranked.length; i++) {
+    await updateDoc(doc(db, 'units', ranked[i].id), { ranking: i + 1 });
+  }
+
+  for (const unitDoc of allUnits.docs) {
+    const growth = unitDoc.data().growth as number ?? 0;
+    await updateDoc(doc(db, 'units', unitDoc.id), { status: calcStatus(growth) });
+  }
+
+  const top5Snap = await getDocs(collection(db, 'top5_audit'));
+  for (const entry of top5Snap.docs) {
+    const data = entry.data();
+    if (data.status === 'Aprovada' || data.status === 'Pendente') {
+      const unitSnap = await getDocs(query(collection(db, 'units'), where('nomeFantasia', '==', data.name)));
+      const growth = unitSnap.empty ? 0 : (unitSnap.docs[0].data().growth as number ?? 0);
+      const diff = parseInt(data.growth?.replace('%', '').replace('+', '') ?? '0', 10);
+      if (growth < 0 || diff < 0) {
+        await updateDoc(doc(db, 'top5_audit', entry.id), { status: 'Rejeitada' });
+      }
     }
   }
 

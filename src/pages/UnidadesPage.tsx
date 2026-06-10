@@ -1,10 +1,9 @@
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUnits } from '@/hooks/useUnits';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FranchiseModal } from '@/components/shared/FranchiseModal';
-import { Badge } from '@/components/ui/badge';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,9 +14,18 @@ import { Download, Building2, Plus, Loader2 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import type { Role } from '@/types';
 
+function calcStatus(diff: number): string {
+  if (diff >= 10) return 'Destaque';
+  if (diff >= 0) return 'Operacional';
+  if (diff > -5) return 'Queda';
+  if (diff > -10) return 'Atenção';
+  return 'Crítico';
+}
+
 export default function UnidadesPage() {
   const { user } = useAuth();
   const role = (user?.role ?? 'admin') as Role;
+  const navigate = useNavigate();
   const { data: units = [], isLoading, error } = useUnits();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -67,13 +75,13 @@ export default function UnidadesPage() {
         </div>
       </PageHeader>
 
-      <div className="flex items-center gap-3">
-        <Input placeholder="Buscar unidade..." className="flex-1 max-w-xs" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="flex items-center" style={{ marginTop: '20px', marginBottom: '0', gap: '12px' }}>
+        <Input placeholder="Buscar unidade..." className="flex-1 max-w-xs" value={search} onChange={(e) => setSearch(e.target.value)} style={{ borderRadius: '8px', border: '1px solid #EEEEEE', padding: '8px 12px', height: '36px' }} />
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? 'all')}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40" style={{ borderRadius: '8px', border: '1px solid #EEEEEE', height: '36px', padding: '0 12px' }}>
             <SelectValue placeholder="Situação" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent style={{ background: '#fff' }}>
             <SelectItem value="all">Todas</SelectItem>
             <SelectItem value="Operacional">Operacional</SelectItem>
             <SelectItem value="Critica">Crítica</SelectItem>
@@ -81,10 +89,10 @@ export default function UnidadesPage() {
           </SelectContent>
         </Select>
         <Select value={sortBy} onValueChange={(v) => setSortBy(v ?? 'growth-desc')}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-44" style={{ borderRadius: '8px', border: '1px solid #EEEEEE', height: '36px', padding: '0 12px' }}>
             <SelectValue placeholder="Ordenar" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent style={{ background: '#fff' }}>
             <SelectItem value="growth-desc">Crescimento (maior)</SelectItem>
             <SelectItem value="growth-asc">Crescimento (menor)</SelectItem>
             <SelectItem value="engagement-desc">Engajamento (maior)</SelectItem>
@@ -95,7 +103,7 @@ export default function UnidadesPage() {
         </Select>
       </div>
 
-      <Card>
+      <Card style={{ marginTop: '24px', padding: '36px', background: '#fff', marginBottom: '24px' }}>
         <CardContent className="p-0">
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
@@ -120,19 +128,19 @@ export default function UnidadesPage() {
               </TableHeader>
               <TableBody>
                 {filtered.map((unit) => (
-                  <TableRow key={unit.id} className="cursor-pointer hover:bg-muted/50">
-                    <TableCell>
-                      <Link to={`/unidades/${unit.id}`} className="font-medium text-sm hover:text-primary">{unit.nomeFantasia}</Link>
+                  <TableRow key={unit.id} onClick={() => navigate(`/unidades/${unit.id}`)} style={{ cursor: 'pointer', height: '56px' }}>
+                    <TableCell style={{ padding: '12px 16px' }}>
+                      <span className="font-medium text-sm hover:text-primary">{unit.nomeFantasia}</span>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{unit.razaoSocial}</TableCell>
-                    <TableCell><StatusBadge status={unit.status} /></TableCell>
-                    <TableCell className="text-right font-semibold">{unit.tces}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-sm text-muted-foreground" style={{ padding: '12px 16px' }}>{unit.razaoSocial}</TableCell>
+                    <TableCell style={{ padding: '12px 16px' }}><StatusBadge status={calcStatus(unit.growth)} /></TableCell>
+                    <TableCell className="text-right font-semibold" style={{ padding: '12px 16px' }}>{unit.tces}</TableCell>
+                    <TableCell className="text-right" style={{ padding: '12px 16px' }}>
                       <span className={`font-semibold text-sm ${unit.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {unit.growth >= 0 ? '+' : ''}{unit.growth}%
+                        {unit.growth >= 0 ? '+' : ''}{unit.growth}
                       </span>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right" style={{ padding: '12px 16px' }}>
                       <div className="flex items-center justify-end gap-2">
                         <span className="text-sm">{unit.engagement}%</span>
                         <div className="h-1 w-10 rounded-full bg-muted">
@@ -140,8 +148,8 @@ export default function UnidadesPage() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant={unit.ranking <= 5 ? 'default' : 'secondary'}>#{unit.ranking}</Badge>
+                    <TableCell className="text-right" style={{ padding: '12px 16px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '44px', padding: '4px 10px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: unit.ranking <= 5 ? '#DC3545' : '#6C757D', color: '#fff' }}>#{unit.ranking}</span>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -14,7 +14,7 @@ export interface Unit {
   id: string;
   razaoSocial: string;
   nomeFantasia: string;
-  status: 'Operacional' | 'Critica' | 'Em Acompanhamento';
+  status: 'Destaque' | 'Operacional' | 'Queda' | 'Atenção' | 'Crítico';
   tces: number;
   growth: number;
   engagement: number;
@@ -31,6 +31,7 @@ export interface Notice {
   createdAt: string;
   createdBy: string;
   target: string;
+  targets?: string[];
 }
 
 export interface Appointment {

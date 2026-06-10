@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/lib/roles';
@@ -10,7 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Upload, Users, Eye, Building2, Loader2 } from 'lucide-react';
-import { BarChart, Bar, XAxis, ResponsiveContainer, Cell } from 'recharts';
+import { LineChart, Line, XAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import type { Role } from '@/types';
 
 const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -20,6 +23,62 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const role = (user?.role ?? 'admin') as Role;
   const { data: units = [], isLoading, error } = useUnits();
+  const [totalHistory, setTotalHistory] = useState<{ month: string; total: number }[]>([]);
+  const [unitMonthly, setUnitMonthly] = useState<Record<string, Record<string, number>>>({});
+  const [evoPeriod, setEvoPeriod] = useState('6');
+  const [rankMonth, setRankMonth] = useState(currentMonthIndex);
+  const [chartMetric, setChartMetric] = useState('tces');
+  const [engagementHistory, setEngagementHistory] = useState<{ month: string; total: number; max: number }[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, 'tce_history'));
+        const sorted = snap.docs.sort((a, b) => a.data().date.localeCompare(b.data().date));
+        const byMonth: Record<string, Record<string, number>> = {};
+        const byUnit: Record<string, Record<string, number>> = {};
+        sorted.forEach(d => {
+          const date = d.data().date as string;
+          const monthKey = date.slice(0, 7);
+          const unit = d.data().razaoSocial as string;
+          const tces = d.data().totalTCE as number;
+          if (!byMonth[monthKey]) byMonth[monthKey] = {};
+          byMonth[monthKey][unit] = tces;
+          if (!byUnit[unit]) byUnit[unit] = {};
+          byUnit[unit][monthKey] = tces;
+        });
+        const data = Object.entries(byMonth).map(([month, units]) => ({
+          month: month.slice(5),
+          total: Object.values(units).reduce((s, v) => s + v, 0),
+        })).sort((a, b) => a.month.localeCompare(b.month));
+        setTotalHistory(data);
+        setUnitMonthly(byUnit);
+      } catch {}
+    })();
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, 'training_presence'));
+        const byUnitMonth: Record<string, Record<string, { attended: number; total: number }>> = {};
+        snap.docs.forEach(d => {
+          const mKey = (d.data().trainingDate as string).slice(0, 7);
+          const unit = d.data().unitName as string;
+          const present = d.data().present as boolean;
+          if (!byUnitMonth[unit]) byUnitMonth[unit] = {};
+          if (!byUnitMonth[unit][mKey]) byUnitMonth[unit][mKey] = { attended: 0, total: 0 };
+          byUnitMonth[unit][mKey].total++;
+          if (present) byUnitMonth[unit][mKey].attended++;
+        });
+        const monthKeys = new Set<string>();
+        Object.values(byUnitMonth).forEach(u => Object.keys(u).forEach(m => monthKeys.add(m)));
+        const data = Array.from(monthKeys).map(month => {
+          const vals = Object.values(byUnitMonth).map(u => u[month]).filter(Boolean);
+          const avg = vals.length > 0 ? Math.round(vals.reduce((s, v) => s + (v.attended / v.total) * 100, 0) / vals.length) : 0;
+          return { month: month.slice(5), total: avg, max: 100 };
+        }).sort((a, b) => a.month.localeCompare(b.month));
+        setEngagementHistory(data);
+      } catch {}
+    })();
+  }, []);
 
   if (isLoading) {
     return (
@@ -42,22 +101,48 @@ export default function DashboardPage() {
   const totalTCEs = units.reduce((s, u) => s + u.tces, 0);
   const avgGrowth = units.length > 0 ? units.reduce((s, u) => s + u.growth, 0) / units.length : 0;
   const avgEngagement = units.length > 0 ? units.reduce((s, u) => s + u.engagement, 0) / units.length : 0;
+  const destaque = units.filter((u) => u.status === 'Destaque').length;
   const saudaveis = units.filter((u) => u.status === 'Operacional').length;
-  const acompanhamento = units.filter((u) => u.status === 'Em Acompanhamento').length;
-  const criticas = units.filter((u) => u.status === 'Critica').length;
+  const queda = units.filter((u) => u.status === 'Queda').length;
+  const atencao = units.filter((u) => u.status === 'Atenção').length;
+  const critico = units.filter((u) => u.status === 'Crítico').length;
 
-  const evolutionData = months.map((month, i) => ({
-    month,
-    crescimento: Math.round(totalTCEs * (0.3 + (i + 1) / 12) * (1 + (Math.random() - 0.5) * 0.05)),
-  }));
+  const evoPeriodMap: Record<string, number> = { '5d': 5, '15d': 15, '1m': 12, '3m': 12, '6m': 12, '12m': 12 };
+  const evoData = chartMetric === 'tces'
+    ? (() => {
+        const count = evoPeriodMap[evoPeriod] ?? 12;
+        const data = totalHistory.slice(-count);
+        while (data.length < count) data.unshift({ month: '—', total: 0 });
+        return data;
+      })()
+    : (() => {
+        const count = evoPeriodMap[evoPeriod] ?? 12;
+        const data = engagementHistory.slice(-count);
+        while (data.length < count) data.unshift({ month: '—', total: 0, max: 100 });
+        return data;
+      })();
 
-  const sortedByGrowth = [...units].sort((a, b) => b.growth - a.growth).slice(0, 5);
+  const year = new Date().getFullYear();
+  const rankMonthKey = `${year}-${String(rankMonth + 1).padStart(2, '0')}`;
+  const prevMonthKey = `${year}-${String(rankMonth).padStart(2, '0')}`;
+  const rankGrowth: { unit: string; growth: number; tces: number }[] = [];
+  for (const [unit, months] of Object.entries(unitMonthly)) {
+    const curr = months[rankMonthKey] ?? 0;
+    const prev = months[prevMonthKey] ?? 0;
+    if (curr > 0 || prev > 0) {
+      rankGrowth.push({ unit, growth: prev > 0 ? Math.round(((curr - prev) / prev) * 100) : curr > 0 ? 100 : -100, tces: curr });
+    }
+  }
+  rankGrowth.sort((a, b) => b.growth - a.growth);
+  const top5 = rankGrowth.slice(0, 5);
   const topRanking = [...units].sort((a, b) => a.ranking - b.ranking).slice(0, 5);
 
   const situationData = [
+    { name: 'Destaque', value: destaque, color: '#8B5CF6' },
     { name: 'Saudável', value: saudaveis, color: '#28A745' },
-    { name: 'Acompanhamento', value: acompanhamento, color: '#FFC107' },
-    { name: 'Crítica', value: criticas, color: '#DC3545' },
+    { name: 'Queda', value: queda, color: '#FFC107' },
+    { name: 'Atenção', value: atencao, color: '#F97316' },
+    { name: 'Crítico', value: critico, color: '#DC3545' },
   ].filter((s) => s.value > 0);
 
   return (
@@ -74,31 +159,45 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-5 gap-3.5">
         <StatCard label="Total de TCEs" value={totalTCEs.toLocaleString()}>
-          <div className="flex items-center gap-1">
+          <div style={{ display: 'flex', alignItems: 'flex-end', height: '35px', gap: '3px' }}>
             {months.map((m, i) => {
               const isFuture = i > currentMonthIndex;
-              return <div key={m} className="h-2 w-2 rounded-full" style={{ backgroundColor: isFuture ? '#D0D0D0' : '#FFCCCC' }} />;
+              if (isFuture) return <div key={m} style={{ width: '10px', height: '10px', borderRadius: '50%', flexShrink: 0, backgroundColor: '#D0D0D0' }} />;
+              const data = totalHistory.length > 0 ? totalHistory.find(h => h.month === String(i + 1).padStart(2, '0')) : null;
+              if (!data) return <div key={m} style={{ width: '16px', borderRadius: '3px', height: '6px', backgroundColor: '#FFCCCC' }} />;
+              const max = Math.max(...totalHistory.map(h => h.total));
+              return <div key={m} style={{ width: '16px', borderRadius: '3px', height: `${(data.total / max) * 100}%`, backgroundColor: '#DC3545', opacity: 0.7 }} />;
             })}
           </div>
         </StatCard>
-        <StatCard label="Crescimento da Rede" value={`${avgGrowth >= 0 ? '+' : ''}${avgGrowth.toFixed(1)}%`}>
-          <div className="flex items-center gap-1">
+        <StatCard label="Crescimento da Rede" value={`${avgGrowth >= 0 ? '+' : ''}${avgGrowth}`}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', height: '35px', gap: '3px' }}>
             {months.map((m, i) => {
               const isFuture = i > currentMonthIndex;
-              return <div key={m} className="h-2 w-2 rounded-full" style={{ backgroundColor: isFuture ? '#D0D0D0' : '#FFCCCC' }} />;
+              if (isFuture) return <div key={m} style={{ width: '10px', height: '10px', borderRadius: '50%', flexShrink: 0, backgroundColor: '#D0D0D0' }} />;
+              const data = totalHistory.length > 0 ? totalHistory.find(h => h.month === String(i + 1).padStart(2, '0')) : null;
+              if (!data) return <div key={m} style={{ width: '16px', borderRadius: '3px', height: '6px', backgroundColor: '#FFCCCC' }} />;
+              const prev = totalHistory.find(h => h.month === String(i).padStart(2, '0'));
+              const max = Math.max(...totalHistory.map(h => h.total));
+              const color = prev ? (data.total >= prev.total ? '#28A745' : '#DC3545') : '#007BFF';
+              return <div key={m} style={{ width: '16px', borderRadius: '3px', height: `${(data.total / max) * 100}%`, backgroundColor: color, opacity: 0.8 }} />;
             })}
           </div>
         </StatCard>
         <StatCard label="Unidades Ativas" value={String(units.length)}>
           <div className="flex gap-1.5 mt-1">
             {saudaveis > 0 && <div className="flex-1 h-1.5 rounded-full bg-green-500" style={{ width: `${(saudaveis / units.length) * 100}%` }} />}
-            {acompanhamento > 0 && <div className="h-1.5 rounded-full bg-yellow-500" style={{ width: `${(acompanhamento / units.length) * 100}%` }} />}
-            {criticas > 0 && <div className="h-1.5 rounded-full bg-red-500" style={{ width: `${(criticas / units.length) * 100}%` }} />}
+            {destaque > 0 && <div className="flex-1 h-1.5 rounded-full bg-purple-500" style={{ width: `${(destaque / units.length) * 100}%` }} />}
+            {queda > 0 && <div className="flex-1 h-1.5 rounded-full bg-yellow-500" style={{ width: `${(queda / units.length) * 100}%` }} />}
+            {atencao > 0 && <div className="h-1.5 rounded-full bg-orange-500" style={{ width: `${(atencao / units.length) * 100}%` }} />}
+            {critico > 0 && <div className="h-1.5 rounded-full bg-red-500" style={{ width: `${(critico / units.length) * 100}%` }} />}
           </div>
           <div className="flex gap-3 mt-1 text-[10px]">
+            {destaque > 0 && <span className="text-purple-600 font-semibold">{destaque} Destaque</span>}
             {saudaveis > 0 && <span className="text-green-600 font-semibold">{saudaveis} Saudável</span>}
-            {acompanhamento > 0 && <span className="text-yellow-600 font-semibold">{acompanhamento} Acomp.</span>}
-            {criticas > 0 && <span className="text-red-600 font-semibold">{criticas} Crítica</span>}
+            {queda > 0 && <span className="text-yellow-600 font-semibold">{queda} Queda</span>}
+            {atencao > 0 && <span className="text-orange-600 font-semibold">{atencao} Atenção</span>}
+            {critico > 0 && <span className="text-red-600 font-semibold">{critico} Crítico</span>}
           </div>
         </StatCard>
         <StatCard label="Engajamento Médio" value={`${avgEngagement.toFixed(1)}%`}>
@@ -114,53 +213,61 @@ export default function DashboardPage() {
         <Card className="col-span-2">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold">Evolução da Rede</CardTitle>
-              <div className="flex gap-1 rounded-md bg-muted p-0.5">
-                {['6M', '1A', '2A'].map((t, i) => (
-                  <button key={t} className={`px-2.5 py-1 text-xs rounded font-medium ${i === 1 ? 'bg-primary text-white' : 'text-muted-foreground'}`}>{t}</button>
+              <CardTitle className="text-sm font-semibold">
+                <select value={chartMetric} onChange={e => setChartMetric(e.target.value)} style={{ border: 'none', background: 'none', fontSize: '14px', fontWeight: 600, cursor: 'pointer', outline: 'none' }}>
+                  <option value="tces">Evolução da Rede</option>
+                  <option value="engagement">Engajamento da Rede</option>
+                </select>
+              </CardTitle>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {[['5d', '5d'], ['15d', '15d'], ['1m', '1m'], ['3m', '3m'], ['6m', '6m'], ['12m', '12m']].map(([val, label]) => (
+                  <button key={val} type="button" onClick={() => setEvoPeriod(val)}
+                    style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px', border: 'none', cursor: 'pointer', background: evoPeriod === val ? '#DC3545' : '#eee', color: evoPeriod === val ? '#fff' : '#666' }}>
+                    {label}
+                  </button>
                 ))}
               </div>
             </div>
           </CardHeader>
           <CardContent className="pt-0">
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={evolutionData}>
+              <LineChart data={evoData}>
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-                <Bar dataKey="crescimento" radius={[3, 3, 0, 0]}>
-                  {evolutionData.map((entry, index) => (
-                    <Cell key={index} fill={entry.crescimento > 800 ? '#28A745' : entry.crescimento > 600 ? '#007BFF' : entry.crescimento > 400 ? '#FFC107' : '#DC3545'} opacity={0.85} />
-                  ))}
-                </Bar>
-              </BarChart>
+                <Tooltip formatter={(value: number) => [`${value}${chartMetric === 'engagement' ? '%' : ' TCEs'}`, chartMetric === 'engagement' ? 'Engajamento' : 'Total']} labelFormatter={(label: string) => `Mês: ${label}`} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
+                <Line type="monotone" dataKey="total" stroke="#DC3545" strokeWidth={2} dot={{ r: 3, fill: '#DC3545' }} />
+              </LineChart>
             </ResponsiveContainer>
-            <div className="flex justify-center gap-3.5 mt-1">
-              {[{ c: '#28A745', l: 'Excelente' }, { c: '#007BFF', l: 'Bom' }, { c: '#FFC107', l: 'Regular' }, { c: '#DC3545', l: 'Baixo' }].map((x) => (
-                <div key={x.l} className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><div className="h-1 w-2.5 rounded-sm" style={{ backgroundColor: x.c }} />{x.l}</div>
-              ))}
-            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Ranking de Crescimento</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold">TOP 5</CardTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button type="button" onClick={() => setRankMonth(Math.max(0, rankMonth - 1))} style={{ padding: '2px 6px', fontSize: '13px', borderRadius: '4px', border: 'none', cursor: 'pointer', background: '#eee', color: '#666' }}>‹</button>
+                <span style={{ fontSize: '13px', fontWeight: 600, minWidth: '36px', textAlign: 'center' }}>{months[rankMonth].toLowerCase()}</span>
+                <button type="button" onClick={() => setRankMonth(Math.min(11, rankMonth + 1))} style={{ padding: '2px 6px', fontSize: '13px', borderRadius: '4px', border: 'none', cursor: 'pointer', background: '#eee', color: '#666' }}>›</button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-2 pt-0">
-            {sortedByGrowth.length === 0 ? (
+            {top5.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">Nenhum dado disponível</p>
             ) : (
-              sortedByGrowth.map((r, i) => {
+              top5.map((r, i) => {
+                const unitData = units.find(u => u.nomeFantasia === r.unit);
                 const colors = ['#FFC107', '#ADB5BD', '#CD7F32', '#6C757D', '#6C757D'];
                 return (
-                  <div key={r.id} className="flex items-center gap-2.5">
+                  <div key={r.unit} className="flex items-center gap-2.5">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: colors[i] ?? '#6C757D' }}>{i + 1}</div>
                     <div className="flex-1 min-w-0">
-                      <p className="truncate text-xs font-medium">{r.nomeFantasia}</p>
+                      <p className="truncate text-xs font-medium">{unitData?.nomeFantasia ?? r.unit}</p>
                       <div className="h-0.5 w-full rounded-full bg-muted mt-0.5">
-                        <div className="h-0.5 rounded-full bg-primary" style={{ width: `${(sortedByGrowth.length - i) * 20}%` }} />
+                        <div className="h-0.5 rounded-full bg-primary" style={{ width: `${(top5.length - i) * 20}%` }} />
                       </div>
                     </div>
-                    <span className={`text-xs font-bold ${r.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>{r.growth >= 0 ? '+' : ''}{r.growth}%</span>
+                    <span className={`text-xs font-bold ${r.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>{r.growth >= 0 ? '+' : ''}{r.growth}</span>
                   </div>
                 );
               })
@@ -201,7 +308,7 @@ export default function DashboardPage() {
                         <TableCell className="font-medium text-sm">{u.nomeFantasia}</TableCell>
                         <TableCell><StatusBadge status={u.status} /></TableCell>
                         <TableCell className="font-semibold">{u.tces}</TableCell>
-                        <TableCell className={`font-semibold text-sm ${u.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>{u.growth >= 0 ? '+' : ''}{u.growth}%</TableCell>
+                        <TableCell className={`font-semibold text-sm ${u.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>{u.growth >= 0 ? '+' : ''}{u.growth}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span className="text-sm">{u.engagement}%</span>

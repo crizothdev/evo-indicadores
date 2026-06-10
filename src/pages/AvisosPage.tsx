@@ -1,6 +1,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/lib/roles';
 import { useNotices, useCreateNotice, useUpdateNotice, useDeleteNotice } from '@/hooks/useNotices';
+import { useUnits } from '@/hooks/useUnits';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
@@ -9,8 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Plus, ChevronRight, Megaphone, Pencil, Trash2, Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import { Plus, ChevronRight, Megaphone, Pencil, Trash2, Loader2, Check, Search, X } from 'lucide-react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import type { Role, Notice } from '@/types';
 
 function formatDate(date: Date | string): string {
@@ -24,15 +25,84 @@ function getTagInfo(notice: Notice): { label: string; variant: 'red' | 'yellow' 
   return { label: '', variant: null };
 }
 
-type NoticeForm = { title: string; content: string; important: boolean };
+type NoticeForm = { title: string; content: string; important: boolean; targets: string[] };
 
-const emptyForm: NoticeForm = { title: '', content: '', important: false };
+const emptyForm: NoticeForm = { title: '', content: '', important: false, targets: [] };
+
+function FranchisePicker({ selected, onChange }: { selected: string[]; onChange: (vals: string[]) => void }) {
+  const { data: units = [] } = useUnits();
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const sorted = useMemo(() => {
+    const selected_ = new Set(selected);
+    return [...units].sort((a, b) => {
+      const aSel = selected_.has(a.nomeFantasia) ? 0 : 1;
+      const bSel = selected_.has(b.nomeFantasia) ? 0 : 1;
+      if (aSel !== bSel) return aSel - bSel;
+      return a.nomeFantasia.localeCompare(b.nomeFantasia);
+    }).filter(u => !search || u.nomeFantasia.toLowerCase().includes(search.toLowerCase())).slice(0, 20);
+  }, [units, selected, search]);
+
+  const toggle = (name: string) => {
+    onChange(selected.includes(name) ? selected.filter(s => s !== name) : [...selected, name]);
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <Label>Franquias</Label>
+      <div onClick={() => setOpen(!open)} style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', minHeight: '36px', padding: '6px 8px', borderRadius: '6px', border: '1px solid #DDD', cursor: 'pointer', fontSize: '13px' }}>
+        {selected.length === 0 ? <span style={{ color: '#999' }}>Todas as unidades (broadcast)</span> : selected.slice(0, 3).map(s => (
+          <span key={s} style={{ display: 'flex', alignItems: 'center', gap: '2px', padding: '2px 6px', borderRadius: '4px', background: '#DC3545', color: '#fff', fontSize: '11px' }}>
+            {s} <button type="button" onClick={e => { e.stopPropagation(); toggle(s); }} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, fontSize: '12px', lineHeight: 1 }}>×</button>
+          </span>
+        ))}
+        {selected.length > 3 && <span style={{ fontSize: '11px', color: '#888' }}>+{selected.length - 3}</span>}
+      </div>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#fff', border: '1px solid #DDD', borderRadius: '6px', marginTop: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+          <div style={{ padding: '8px', borderBottom: '1px solid #EEE' }}>
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar franquia..." style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #DDD', fontSize: '13px', outline: 'none' }} />
+          </div>
+          <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+            <button type="button" onClick={() => onChange([])} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '13px', textAlign: 'left', color: selected.length === 0 ? '#DC3545' : '#666' }}>
+              <div style={{ width: '16px', height: '16px', borderRadius: '3px', border: '2px solid', display: 'flex', alignItems: 'center', justifyContent: 'center', borderColor: selected.length === 0 ? '#DC3545' : '#DDD' }}>{selected.length === 0 ? <span style={{ color: '#DC3545', fontSize: '12px' }}>✓</span> : null}</div>
+              Todas as unidades (broadcast)
+            </button>
+            <div style={{ height: '1px', background: '#EEE', margin: '0 12px' }} />
+            {sorted.map(u => (
+              <button key={u.id} type="button" onClick={() => toggle(u.nomeFantasia)} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '13px', textAlign: 'left', color: '#333' }}>
+                <div style={{ width: '16px', height: '16px', borderRadius: '3px', border: '2px solid', display: 'flex', alignItems: 'center', justifyContent: 'center', borderColor: selected.includes(u.nomeFantasia) ? '#DC3545' : '#DDD' }}>{selected.includes(u.nomeFantasia) ? <span style={{ color: '#DC3545', fontSize: '12px' }}>✓</span> : null}</div>
+                {u.nomeFantasia}
+              </button>
+            ))}
+          </div>
+          <div style={{ padding: '8px', borderTop: '1px solid #EEE' }}>
+            <button type="button" onClick={() => setOpen(false)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: 'none', background: '#DC3545', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>Confirmar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function AvisosPage() {
   const { user } = useAuth();
   const role = (user?.role ?? 'admin') as Role;
   const { data: notices = [], isLoading, error } = useNotices();
-  const createNotice = useCreateNotice();
+  const { data: units = [] } = useUnits();
+  const isFranchise = role === 'franchise';
+  const userUnitName = isFranchise ? units.find(u => u.id === user?.unitId)?.nomeFantasia ?? '' : '';
+  const filteredNotices = isFranchise && userUnitName
+    ? notices.filter(n => n.target === 'all' || (n.target || '').split(',').includes(userUnitName))
+    : notices;
   const updateNotice = useUpdateNotice();
   const deleteNotice = useDeleteNotice();
 
@@ -41,22 +111,23 @@ export default function AvisosPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState<NoticeForm>(emptyForm);
 
-  const selected = notices.find((n) => n.id === selectedId) ?? notices[0];
+  const selected = filteredNotices.find((n) => n.id === selectedId) ?? filteredNotices[0];
 
   const canManage = hasPermission(role, 'canManageNotices');
 
   const handleCreate = () => {
-    if (!form.title || !form.content) return;
-    createNotice.mutate({ title: form.title, content: form.content, important: form.important, createdBy: user?.id ?? '', target: 'all' });
+    const isBroadcast = form.targets.length === 0;
+    createNotice.mutate({ title: form.title, content: form.content, important: form.important, createdBy: user?.id ?? '', target: isBroadcast ? 'all' : form.targets.join(',') });
     setForm(emptyForm);
     setCreateOpen(false);
   };
 
   const handleEdit = () => {
-    if (!form.title || !form.content || !selectedId) return;
-    updateNotice.mutate({ id: selectedId, data: { title: form.title, content: form.content, important: form.important } });
+    if (!editingId) return;
+    const isBroadcast = form.targets.length === 0;
+    updateNotice.mutate({ id: editingId, data: { title: form.title, content: form.content, important: form.important, target: isBroadcast ? 'all' : form.targets.join(',') } });
+    setEditingId(null);
     setForm(emptyForm);
-    setEditOpen(false);
   };
 
   const handleDelete = (id: string) => {
@@ -67,7 +138,7 @@ export default function AvisosPage() {
   };
 
   const openEdit = (notice: Notice) => {
-    setForm({ title: notice.title, content: notice.content, important: notice.important });
+    setForm({ title: notice.title, content: notice.content, important: notice.important, targets: notice.target === 'all' ? [] : (notice.target || '').split(',') });
     setSelectedId(notice.id);
     setEditOpen(true);
   };
@@ -109,9 +180,10 @@ export default function AvisosPage() {
                   <input type="checkbox" checked={form.important} onChange={(e) => setForm({ ...form, important: e.target.checked })} className="rounded" />
                   Marcar como importante
                 </label>
+                <FranchisePicker selected={form.targets} onChange={(vals) => setForm({ ...form, targets: vals })} />
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+                <Button variant="outline" onClick={() => { setCreateOpen(false); setForm(emptyForm); }}>Cancelar</Button>
                 <Button onClick={handleCreate} disabled={!form.title || !form.content || createNotice.isPending}>Salvar</Button>
               </DialogFooter>
             </DialogContent>
@@ -121,14 +193,14 @@ export default function AvisosPage() {
 
       {error ? (
         <EmptyState icon={Megaphone} title="Erro ao carregar avisos" description="Não foi possível carregar os dados. Tente novamente." />
-      ) : notices.length === 0 ? (
+      ) : filteredNotices.length === 0 ? (
         <EmptyState icon={Megaphone} title="Nenhum aviso cadastrado" description="Os comunicados da franqueadora aparecerão aqui." />
       ) : (
         <div className="grid grid-cols-3 gap-5">
           <Card className="col-span-1">
             <CardContent className="p-0">
               <div className="divide-y divide-border">
-                {notices.map((a) => {
+                {filteredNotices.map((a) => {
                   const tag = getTagInfo(a);
                   const isActive = selected?.id === a.id;
                   return (
@@ -171,7 +243,8 @@ export default function AvisosPage() {
                 )}
                 <h2 className="text-xl font-bold">{selected.title}</h2>
                 <div className="flex gap-4 text-sm text-muted-foreground">
-                  <span>{formatDate(selected.createdAt)}</span><span>Admin</span><span>Todas as unidades</span>
+                  <span>{formatDate(selected.createdAt)}</span>
+                <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', background: selected.target === 'all' ? '#E8F5E9' : '#FFF8E1', color: selected.target === 'all' ? '#2E7D32' : '#F57F17' }}>{selected.target === 'all' ? 'Broadcast' : `${selected.target.split(',').length} unidade(s)`}</span>
                 </div>
                 <div className="h-px bg-border" />
                 <div className="space-y-2 text-sm text-muted-foreground whitespace-pre-line">{selected.content}</div>
@@ -197,6 +270,7 @@ export default function AvisosPage() {
                               <input type="checkbox" checked={form.important} onChange={(e) => setForm({ ...form, important: e.target.checked })} className="rounded" />
                               Marcar como importante
                             </label>
+                            <FranchisePicker selected={form.targets} onChange={(vals) => setForm({ ...form, targets: vals })} />
                           </div>
                           <DialogFooter>
                             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>

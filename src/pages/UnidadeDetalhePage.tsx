@@ -8,9 +8,12 @@ import { SituationScale } from '@/components/shared/SituationScale';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, Bar, XAxis, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
+import { LineChart, Line, XAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { Eye, Building2, Loader2 } from 'lucide-react';
 import type { Role } from '@/types';
+import { useState, useEffect } from 'react';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
@@ -18,11 +21,33 @@ function getInitials(name: string): string {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
+function calcStatus(diff: number): string {
+  if (diff >= 10) return 'Destaque';
+  if (diff >= 0) return 'Operacional';
+  if (diff > -5) return 'Queda';
+  if (diff > -10) return 'Atenção';
+  return 'Crítico';
+}
+
 export default function UnidadeDetalhePage() {
   const { id } = useParams();
   const { user } = useAuth();
   const role = (user?.role ?? 'admin') as Role;
   const { data: unit, isLoading, error } = useUnit(id ?? '');
+  const [tceHistory, setTceHistory] = useState<{ date: string; totalTCE: number }[]>([]);
+  const [periodFilter, setPeriodFilter] = useState('5d');
+
+  useEffect(() => {
+    if (!unit) return;
+    (async () => {
+      try {
+        const snap = await getDocs(query(collection(db, 'tce_history'), where('razaoSocial', '==', unit.nomeFantasia)));
+        const sorted = snap.docs.sort((a, b) => a.data().date.localeCompare(b.data().date));
+        const data = sorted.map(d => ({ date: d.data().date as string, totalTCE: d.data().totalTCE as number }));
+        setTceHistory(data);
+      } catch {}
+    })();
+  }, [unit]);
 
   if (isLoading) {
     return (
@@ -32,33 +57,61 @@ export default function UnidadeDetalhePage() {
     );
   }
 
-  if (error || !unit) {
+  if (!unit && error) {
     return (
       <div className="space-y-5">
         <PageHeader title="Detalhe da Unidade">
           <Link to="/unidades"><Button variant="outline" size="sm">← Voltar</Button></Link>
         </PageHeader>
-        <EmptyState icon={Building2} title={error ? 'Erro ao carregar unidade' : 'Unidade não encontrada'} description={error ? 'Não foi possível carregar os dados. Tente novamente.' : 'A unidade solicitada não existe ou foi removida.'} />
+        <EmptyState icon={Building2} title="Erro ao carregar unidade" description="Não foi possível carregar os dados. Tente novamente." />
       </div>
     );
   }
 
-  const historyData = months.map((month, i) => ({
-    month,
-    value: Math.round(unit.tces * (0.5 + (i + 1) / 12) * (1 + (Math.random() - 0.5) * 0.1)),
-  }));
+  if (!unit) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const dailyData = tceHistory.length > 0
+    ? tceHistory.map(h => ({ month: h.date.slice(5), value: h.totalTCE }))
+    : months.map((month, i) => ({
+        month,
+        value: Math.round((unit?.tces ?? 0) * (0.5 + (i + 1) / 12) * (1 + (Math.random() - 0.5) * 0.1)),
+      }));
+
+  const monthlyAgg = tceHistory.length > 0
+    ? Object.entries(
+        tceHistory.reduce((acc: Record<string, number>, h) => {
+          const key = h.date.slice(0, 7);
+          acc[key] = (acc[key] ?? 0) + h.totalTCE;
+          return acc;
+        }, {})
+      ).map(([month, value]) => ({ month: month.slice(5), value })).sort((a, b) => a.month.localeCompare(b.month))
+    : [];
+
+  const periodMap: Record<string, number> = { '5d': 5, '15d': 15, 'month': 30, '3m': 3, '5m': 5, '12m': 12 };
+  const isDaily = periodFilter === '5d' || periodFilter === '15d' || periodFilter === 'month';
+  const historyData = isDaily
+    ? dailyData.slice(-periodMap[periodFilter])
+    : (monthlyAgg.length > 0 ? monthlyAgg : dailyData).slice(-periodMap[periodFilter]);
 
   const metrics = [
-    { label: 'TCEs Ativos', value: String(unit.tces), sub: '+8 este mês' },
-    { label: 'Crescimento', value: `${unit.growth >= 0 ? '+' : ''}${unit.growth}%`, sub: 'Meta: +25%' },
-    { label: 'Engajamento', value: `${unit.engagement}%`, sub: 'Presença treinamentos' },
-    { label: 'Posição Ranking', value: `#${unit.ranking}`, sub: 'de 156 unidades' },
+    { label: 'TCEs Ativos', value: String(unit?.tces ?? 0), sub: '+8 este mês' },
+    { label: 'Crescimento', value: `${(unit?.growth ?? 0) >= 0 ? '+' : ''}${unit?.growth ?? 0}`, sub: '' },
+    { label: 'Engajamento', value: `${unit?.engagement ?? 0}%`, sub: 'Presença treinamentos' },
+    { label: 'Posição Ranking', value: `#${unit?.ranking ?? 0}`, sub: 'de 156 unidades' },
   ];
 
   const statusMap: Record<string, string> = {
+    Destaque: 'Saudavel',
     Operacional: 'Saudavel',
-    Critica: 'Atencao',
-    'Em Acompanhamento': 'Atencao',
+    Queda: 'Atencao',
+    Atenção: 'Atencao',
+    Crítico: 'Critica',
   };
 
   return (
@@ -80,11 +133,11 @@ export default function UnidadeDetalhePage() {
               <h1 className="text-xl font-bold">{unit.nomeFantasia}</h1>
               <p className="text-sm text-muted-foreground">{unit.razaoSocial}</p>
               <div className="flex items-center gap-2 mt-0.5">
-                <StatusBadge status={unit.status === 'Operacional' ? 'Saudavel' : unit.status} />
+                <StatusBadge status={calcStatus(unit.growth)} />
                 <span className="text-sm text-primary font-medium">Ranking #{unit.ranking}</span>
               </div>
             </div>
-            <SituationScale current={statusMap[unit.status] ?? 'Saudavel'} />
+            <SituationScale current={statusMap[calcStatus(unit.growth)] ?? 'Saudavel'} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -101,17 +154,26 @@ export default function UnidadeDetalhePage() {
         </div>
 
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Histórico Rápido</CardTitle></CardHeader>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold">Histórico Rápido</CardTitle>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {[['5d', '5d'], ['15d', '15d'], ['month', 'Mês'], ['3m', '3m'], ['5m', '5m'], ['12m', '12m']].map(([val, label]) => (
+                  <button key={val} type="button" onClick={() => setPeriodFilter(val)}
+                    style={{ padding: '2px 8px', fontSize: '11px', borderRadius: '4px', border: 'none', cursor: 'pointer', background: periodFilter === val ? '#DC3545' : '#eee', color: periodFilter === val ? '#fff' : '#666' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={140}>
-              <BarChart data={historyData}>
+              <LineChart data={historyData}>
                 <XAxis dataKey="month" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                <Bar dataKey="value" radius={[2,2,0,0]}>
-                  {historyData.map((d, i) => (
-                    <Cell key={i} fill={d.value > unit.tces * 0.8 ? '#28A745' : d.value >= unit.tces * 0.5 ? '#FFC107' : '#DC3545'} opacity={0.85} />
-                  ))}
-                </Bar>
-              </BarChart>
+                <Tooltip formatter={(value: number) => [`${value} TCEs`, '']} labelFormatter={(label: string) => `${label}`} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
+                <Line type="monotone" dataKey="value" stroke="#DC3545" strokeWidth={2} dot={{ r: 3, fill: '#DC3545' }} />
+              </LineChart>
             </ResponsiveContainer>
             <div className="flex justify-center gap-2 mt-1 text-[9px] text-muted-foreground">
               <span className="flex items-center gap-1"><span className="h-1 w-2 rounded-sm bg-green-500" />Bom</span>

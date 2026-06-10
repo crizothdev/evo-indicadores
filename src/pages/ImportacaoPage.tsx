@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -69,8 +69,8 @@ interface TypeCardDef {
 const typeCards: TypeCardDef[] = [
   {
     type: 'tce',
-    label: 'TCEs Di\u00e1rios',
-    desc: 'Export di\u00e1rio do sistema',
+    label: 'TCEs Diários',
+    desc: 'Export diário do sistema',
     icon: TrendingUp,
     activeBorder: 'border-green-500',
     activeBg: 'bg-green-50/50',
@@ -78,8 +78,8 @@ const typeCards: TypeCardDef[] = [
   },
   {
     type: 'training',
-    label: 'Presen\u00e7a Treinamentos',
-    desc: 'Lista de presen\u00e7a',
+    label: 'Presença Treinamentos',
+    desc: 'Lista de presença',
     icon: ClipboardList,
     activeBorder: 'border-blue-500',
     activeBg: 'bg-blue-50/50',
@@ -87,8 +87,8 @@ const typeCards: TypeCardDef[] = [
   },
   {
     type: 'legacy',
-    label: 'Hist\u00f3rico Legado',
-    desc: 'Dados hist\u00f3ricos',
+    label: 'Histórico Legado',
+    desc: 'Dados históricos',
     icon: History,
     activeBorder: 'border-yellow-500',
     activeBg: 'bg-yellow-50/50',
@@ -115,7 +115,74 @@ export default function ImportacaoPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [unknownUnits, setUnknownUnits] = useState<string[]>([]);
   const [comparison, setComparison] = useState<{ razaoSocial: string; yesterday: number; today: number; diff: number }[] | null>(null);
+  const [previewComparison, setPreviewComparison] = useState<{ razaoSocial: string; yesterday: number; today: number; diff: number }[] | null>(null);
+  const [hasExistingData, setHasExistingData] = useState(false);
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false);
+
+  const validateUnits = useCallback(async (names: string[]) => {
+    const unique = [...new Set(names.filter(Boolean))];
+    try {
+      const { fetchUnits } = await import('@/services/dataService');
+      const existing = await fetchUnits();
+      const existingNames = new Set(existing.map((u) => u.nomeFantasia));
+      const missing = unique.filter((n) => !existingNames.has(n));
+      setUnknownUnits(missing);
+    } catch {
+      setUnknownUnits([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (result && importType === 'tce') {
+      const names = Object.keys(result.summary);
+      validateUnits(names);
+      (async () => {
+        try {
+          const { collection, query, where, orderBy, getDocs, limit } = await import('firebase/firestore');
+          const { db } = await import('@/lib/firebase');
+          const isoDate = importDate.split('/').reverse().join('-');
+          const prevSnap = await getDocs(query(collection(db, 'tce_history'), orderBy('date', 'desc'), limit(100)));
+          const seenDates = new Set<string>();
+          let prevDate = '';
+          for (const d of prevSnap.docs) {
+            const date = d.data().date as string;
+            if (date !== isoDate && !seenDates.has(date)) {
+              prevDate = date;
+              break;
+            }
+            seenDates.add(date);
+          }
+          const prev: Record<string, number> = {};
+          if (prevDate) {
+            const daySnap = await getDocs(query(collection(db, 'tce_history'), where('date', '==', prevDate)));
+            daySnap.docs.forEach(d => { prev[d.data().razaoSocial] = d.data().totalTCE; });
+          }
+          const comp = Object.entries(result.summary).map(([r, t]) => ({ razaoSocial: r, yesterday: prev[r] ?? 0, today: t, diff: t - (prev[r] ?? 0) }));
+          setPreviewComparison(comp);
+          const existing = await getDocs(query(collection(db, 'tce_history'), where('date', '==', isoDate)));
+          setHasExistingData(existing.size > 0);
+        } catch {}
+      })();
+    } else if (legacyData && importType === 'legacy') {
+      const names = legacyData.rows.map((r) => r[1] ?? '');
+      validateUnits(names);
+      (async () => {
+        try {
+          const { collection, query, where, getDocs } = await import('firebase/firestore');
+          const { db } = await import('@/lib/firebase');
+          const isoDate = (legacyData.rows[0]?.[0] ?? '').split('/').reverse().join('-');
+          if (isoDate && isoDate.length === 10) {
+            const existing = await getDocs(query(collection(db, 'tce_history'), where('date', '==', isoDate)));
+            setHasExistingData(existing.size > 0);
+          }
+        } catch {}
+      })();
+    } else {
+      setUnknownUnits([]);
+    }
+  }, [result, legacyData, importType, validateUnits]);
 
   const hasResult = result !== null || trainingResult !== null || legacyData !== null;
 
@@ -123,6 +190,14 @@ export default function ImportacaoPage() {
     setSaving(true);
     setSaveError('');
     try {
+      if ((hasExistingData && !confirmOverwrite) || unknownUnits.length > 0) { setSaving(false); return; }
+      const isoDate = importDate.split('/').reverse().join('-');
+      if (confirmOverwrite) {
+        const { collection, query, where, getDocs, deleteDoc, doc } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+        const existing = await getDocs(query(collection(db, 'tce_history'), where('date', '==', isoDate)));
+        for (const d of existing.docs) await deleteDoc(doc(db, 'tce_history', d.id));
+      }
       if (importType === 'tce' && result) {
         const ret = await saveTCEImport({ date: importDate, rows: result.rows, summary: result.summary });
         setComparison(ret.comparison);
@@ -161,6 +236,8 @@ export default function ImportacaoPage() {
     reset();
     setLegacyData(null);
     setSaved(false);
+    setHasExistingData(false);
+    setConfirmOverwrite(false);
 
     if (importType === 'tce') {
       importDailyTCE(csvText);
@@ -193,6 +270,8 @@ export default function ImportacaoPage() {
     setLegacyData(null);
     setSaved(false);
     setComparison(null);
+    setPreviewComparison(null);
+    setConfirmOverwrite(false);
     setImportDate(new Date().toLocaleDateString('pt-BR'));
   }, [reset]);
 
@@ -202,7 +281,7 @@ export default function ImportacaoPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Importar Dados CSV" description="Fa\u00e7a upload ou cole os dados para processamento" />
+      <PageHeader title="Importar Dados CSV" description="Faça upload ou cole os dados para processamento" />
 
       {hasResult ? (
         <>
@@ -212,16 +291,16 @@ export default function ImportacaoPage() {
                 <>
                   <div className="flex items-center justify-end">
                     <Button variant="ghost" size="sm" className="gap-1.5" onClick={handleReset}>
-                      \u2190 Nova importa\u00e7\u00e3o
+                      ← Nova importação
                     </Button>
                   </div>
 
                   <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-semibold flex items-center">
-                        Compara\u00e7\u00e3o de TCEs
-                        <Badge variant="secondary" className="ml-2">{result.rows.length} registros</Badge>
-                        {saved && <Badge variant="outline" className="ml-2 text-xs">{importDate}</Badge>}
+                        Comparação de TCEs
+                        <Badge variant="secondary" className="ml-2" style={{ color: '#fff', marginLeft: '12px' }}>{result.rows.length} registros</Badge>
+                        {saved && <Badge variant="outline" className="ml-2 text-xs" style={{ marginLeft: '8px' }}>{importDate}</Badge>}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-0">
@@ -231,13 +310,17 @@ export default function ImportacaoPage() {
                             <TableHead>Unidade</TableHead>
                             <TableHead className="text-center">Anterior</TableHead>
                             <TableHead className="text-center">{importDate}</TableHead>
-                            <TableHead className="text-center">Diferen\u00e7a</TableHead>
+                            <TableHead className="text-center">Diferença</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {(comparison ?? Object.entries(result.summary).map(([r, t]) => ({ razaoSocial: r, yesterday: t, today: t, diff: 0 }))).map((row) => (
-                            <TableRow key={row.razaoSocial}>
-                              <TableCell className="font-medium">{row.razaoSocial}</TableCell>
+                          {(comparison ?? previewComparison ?? Object.entries(result.summary).map(([r, t]) => ({ razaoSocial: r, yesterday: 0, today: t, diff: t }))).map((row) => {
+                            const isUnknown = unknownUnits.includes(row.razaoSocial);
+                            return (
+                            <TableRow key={row.razaoSocial} style={isUnknown ? { background: '#FFF0F0' } : undefined}>
+                              <TableCell className="font-medium" style={isUnknown ? { color: '#DC3545' } : undefined}>
+                                {row.razaoSocial} {isUnknown && <span style={{ fontSize: '10px', color: '#DC3545' }}>(não cadastrada)</span>}
+                              </TableCell>
                               <TableCell className="text-center text-muted-foreground">{row.yesterday}</TableCell>
                               <TableCell className="text-center font-semibold">{row.today}</TableCell>
                               <TableCell className="text-center">
@@ -257,7 +340,8 @@ export default function ImportacaoPage() {
                                 )}
                               </TableCell>
                             </TableRow>
-                          ))}
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </CardContent>
@@ -280,9 +364,30 @@ export default function ImportacaoPage() {
 
                   {saveError && <p className="text-center text-sm text-red-600">{saveError}</p>}
 
+                  {unknownUnits.length > 0 && (
+                    <Card style={{ borderColor: '#DC3545' }}>
+                      <CardContent style={{ padding: '12px' }}>
+                        <p className="text-sm font-semibold text-red-600">
+                          {unknownUnits.length} unidade{unknownUnits.length !== 1 ? 's' : ''} não cadastrada{unknownUnits.length !== 1 ? 's' : ''}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">Cadastre as unidades antes de importar os TCEs.</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {hasExistingData && !confirmOverwrite && (
+                    <Card style={{ borderColor: '#FFC107' }}>
+                      <CardContent style={{ padding: '12px' }}>
+                        <p className="text-sm font-semibold text-yellow-700">Já existem dados para esta data</p>
+                        <p className="text-xs text-muted-foreground mt-1">Deseja sobrescrever os registros existentes?</p>
+                        <button type="button" onClick={() => setConfirmOverwrite(true)} style={{ marginTop: '8px', padding: '6px 16px', background: '#DC3545', color: '#fff', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '13px' }}>Sobrescrever</button>
+                      </CardContent>
+                    </Card>
+                  )}
+
                   <div className="flex justify-center gap-3">
                     {!saved ? (
-                      <Button size="sm" className="gap-1.5" onClick={handleSave} disabled={saving || result.rows.length === 0}>
+                      <Button size="sm" className="gap-1.5" onClick={handleSave} disabled={saving || result.rows.length === 0 || unknownUnits.length > 0 || (hasExistingData && !confirmOverwrite)}>
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         Salvar no Banco
                       </Button>
@@ -300,7 +405,7 @@ export default function ImportacaoPage() {
                 <EmptyState
                   icon={TrendingUp}
                   title="Nenhum dado importado"
-                  description="Nenhuma linha v\u00e1lida encontrada no CSV. Verifique o formato e tente novamente."
+                  description="Nenhuma linha válida encontrada no CSV. Verifique o formato e tente novamente."
                 />
               )}
 
@@ -320,15 +425,15 @@ export default function ImportacaoPage() {
                 <>
                   <div className="flex items-center justify-end">
                     <Button variant="ghost" size="sm" className="gap-1.5" onClick={handleReset}>
-                      \u2190 Nova importa\u00e7\u00e3o
+                      ← Nova importação
                     </Button>
                   </div>
 
                   <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-semibold flex items-center">
-                        Presen\u00e7a em Treinamentos
-                        <Badge variant="secondary" className="ml-2">{trainingResult.rows.length} unidades</Badge>
+                        Presença em Treinamentos
+                        <Badge variant="secondary" className="ml-2" style={{ color: '#fff', marginLeft: '12px' }}>{trainingResult.rows.length} unidades</Badge>
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-0">
@@ -405,7 +510,7 @@ export default function ImportacaoPage() {
                 <EmptyState
                   icon={Users}
                   title="Nenhum dado importado"
-                  description="Nenhuma linha v\u00e1lida encontrada no CSV. Verifique o formato e tente novamente."
+                  description="Nenhuma linha válida encontrada no CSV. Verifique o formato e tente novamente."
                 />
               )}
 
@@ -423,15 +528,15 @@ export default function ImportacaoPage() {
                 <>
                   <div className="flex items-center justify-end">
                     <Button variant="ghost" size="sm" className="gap-1.5" onClick={handleReset}>
-                      \u2190 Nova importa\u00e7\u00e3o
+                      ← Nova importação
                     </Button>
                   </div>
 
                   <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-semibold flex items-center">
-                        Pr\u00e9-visualiza\u00e7\u00e3o Hist\u00f3rico Legado
-                        <Badge variant="secondary" className="ml-2">{legacyData.rows.length} linhas</Badge>
+                        Pré-visualização Histórico Legado
+                        <Badge variant="secondary" className="ml-2" style={{ color: '#fff', marginLeft: '12px' }}>{legacyData.rows.length} linhas</Badge>
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-0">
@@ -445,13 +550,18 @@ export default function ImportacaoPage() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {legacyData.rows.map((row, rowIdx) => (
-                              <TableRow key={rowIdx}>
+                            {legacyData.rows.map((row, rowIdx) => {
+                              const isUnknown = unknownUnits.includes(row[1] ?? '');
+                              return (
+                              <TableRow key={rowIdx} style={isUnknown ? { background: '#FFF0F0' } : undefined}>
                                 {row.map((cell, cellIdx) => (
-                                  <TableCell key={cellIdx}>{cell}</TableCell>
+                                  <TableCell key={cellIdx} style={cellIdx === 1 && isUnknown ? { color: '#DC3545' } : undefined}>
+                                    {cell}{cellIdx === 1 && isUnknown ? ' (não cadastrada)' : ''}
+                                  </TableCell>
                                 ))}
                               </TableRow>
-                            ))}
+                              );
+                            })}
                           </TableBody>
                         </Table>
                       </div>
@@ -473,9 +583,30 @@ export default function ImportacaoPage() {
                     </Card>
                   )}
 
+                  {unknownUnits.length > 0 && (
+                    <Card style={{ borderColor: '#DC3545' }}>
+                      <CardContent style={{ padding: '12px' }}>
+                        <p className="text-sm font-semibold text-red-600">
+                          {unknownUnits.length} unidade{unknownUnits.length !== 1 ? 's' : ''} não cadastrada{unknownUnits.length !== 1 ? 's' : ''}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">Cadastre as unidades antes de importar os TCEs.</p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {hasExistingData && !confirmOverwrite && (
+                    <Card style={{ borderColor: '#FFC107' }}>
+                      <CardContent style={{ padding: '12px' }}>
+                        <p className="text-sm font-semibold text-yellow-700">Já existem dados para esta data</p>
+                        <p className="text-xs text-muted-foreground mt-1">Deseja sobrescrever os registros existentes?</p>
+                        <button type="button" onClick={() => setConfirmOverwrite(true)} style={{ marginTop: '8px', padding: '6px 16px', background: '#DC3545', color: '#fff', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '13px' }}>Sobrescrever</button>
+                      </CardContent>
+                    </Card>
+                  )}
+
                   <div className="flex justify-center gap-3">
                     {!saved ? (
-                      <Button size="sm" className="gap-1.5" onClick={handleSave} disabled={saving || legacyData.rows.length === 0}>
+                      <Button size="sm" className="gap-1.5" onClick={handleSave} disabled={saving || legacyData.rows.length === 0 || unknownUnits.length > 0 || (hasExistingData && !confirmOverwrite)}>
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         {saving ? 'Salvando...' : 'Salvar como Unidades'}
                       </Button>
@@ -493,7 +624,7 @@ export default function ImportacaoPage() {
                 <EmptyState
                   icon={History}
                   title="Nenhum dado importado"
-                  description="Nenhuma linha v\u00e1lida encontrada no CSV. Verifique o formato e tente novamente."
+                  description="Nenhuma linha válida encontrada no CSV. Verifique o formato e tente novamente."
                 />
               )}
 
@@ -509,10 +640,10 @@ export default function ImportacaoPage() {
         <>
           <Card>
             <CardHeader className="flex flex-row items-start justify-between pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2"><FileText className="h-4 w-4" /> Formato de Importa\u00e7\u00e3o</CardTitle>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2"><FileText className="h-4 w-4" /> Formato de Importação</CardTitle>
               <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={handleCopyInstructions}>
                 {copied ? <CheckCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                {copied ? 'Copiado!' : 'Copiar instru\u00e7\u00f5es'}
+                {copied ? 'Copiado!' : 'Copiar instruções'}
               </Button>
             </CardHeader>
             <CardContent className="pt-0">
@@ -565,7 +696,7 @@ export default function ImportacaoPage() {
               <UploadCloud className="h-10 w-10 text-muted-foreground/40" />
               <div className="text-center">
                 <p className="text-sm text-muted-foreground">Arraste o arquivo CSV aqui ou cole os dados abaixo</p>
-                <p className="mt-1 text-xs text-muted-foreground/60">Formatos aceitos: delimitado por v\u00edrgula (,) ou ponto-e-v\u00edrgula (;)</p>
+                <p className="mt-1 text-xs text-muted-foreground/60">Formatos aceitos: delimitado por vírgula (,) ou ponto-e-vírgula (;)</p>
               </div>
             </CardContent>
           </Card>

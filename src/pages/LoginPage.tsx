@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { AlertCircle } from 'lucide-react';
+import bgLogin from '@/assets/bg-login.png';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -34,8 +35,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="absolute top-0 left-0 right-0 h-72 bg-primary" />
+    <div className="flex min-h-screen items-center justify-center bg-background p-4" style={{ backgroundImage: `url(${bgLogin})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
       <Card className="relative z-10 w-full max-w-md border-border shadow-lg">
         <CardHeader className="space-y-1 text-center pb-0">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary">

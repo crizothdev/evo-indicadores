@@ -1,216 +1,256 @@
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUnit } from '@/hooks/useUnits';
+import { useUnit, useUnits } from '@/hooks/useUnits';
+import { useTop5 } from '@/hooks/useTop5';
 import { useNotices } from '@/hooks/useNotices';
-import { StatCard } from '@/components/shared/StatCard';
+import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SituationScale } from '@/components/shared/SituationScale';
+import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { BarChart, Bar, XAxis, ResponsiveContainer, Cell } from 'recharts';
-import { Trophy, TrendingUp, Users, Eye, Store, Loader2 } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { LineChart, Line, XAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { Trophy, Building2, Loader2 } from 'lucide-react';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { Role } from '@/types';
 
-function formatDate(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleDateString('pt-BR');
-}
+const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 function getInitials(name: string): string {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+function calcStatus(diff: number): string {
+  if (diff >= 10) return 'Destaque';
+  if (diff >= 0) return 'Operacional';
+  if (diff > -5) return 'Queda';
+  if (diff > -10) return 'Atenção';
+  return 'Crítico';
+}
+
+const statusMap: Record<string, string> = {
+  Destaque: 'Saudavel',
+  Operacional: 'Saudavel',
+  Queda: 'Atencao',
+  Atenção: 'Atencao',
+  Crítico: 'Critica',
+};
 
 export default function FranquiaDashboardPage() {
   const { user } = useAuth();
+  const role = (user?.role ?? 'franchise') as Role;
   const { data: unit, isLoading, error } = useUnit(user?.unitId ?? '');
+  const { data: allUnits = [] } = useUnits();
+  const { data: top5Entries = [] } = useTop5();
   const { data: notices = [] } = useNotices();
+  const [tceHistory, setTceHistory] = useState<{ date: string; totalTCE: number }[]>([]);
+  const [periodFilter, setPeriodFilter] = useState('5d');
+
+  useEffect(() => {
+    if (!unit) return;
+    (async () => {
+      try {
+        const snap = await getDocs(query(collection(db, 'tce_history'), where('razaoSocial', '==', unit.nomeFantasia)));
+        const sorted = snap.docs.sort((a, b) => a.data().date.localeCompare(b.data().date));
+        const data = sorted.map(d => ({ date: d.data().date as string, totalTCE: d.data().totalTCE as number }));
+        setTceHistory(data);
+      } catch {}
+    })();
+  }, [unit]);
+
+  const filteredNotices = notices.filter(n => n.target === 'all' || (n.target || '').split(',').includes(unit?.nomeFantasia ?? ''));
+  const sortedByTces = [...allUnits].sort((a, b) => b.tces - a.tces);
+  const approvedTop5 = top5Entries.filter(e => e.status === 'Aprovada').sort((a, b) => a.pos - b.pos);
+  const colors = ['#FFC107', '#9E9E9E', '#CD7F32', '#6C757D', '#6C757D'];
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <div className="flex items-center justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   }
 
-  if (error || !unit) {
+  if (!unit && error) {
     return (
       <div className="space-y-5">
-        <div className="flex items-center gap-3.5">
-          <h1 className="text-xl font-bold">Minha Franquia</h1>
-        </div>
-        <EmptyState icon={Store} title="Unidade não encontrada" description="Sua franquia ainda não foi configurada. Entre em contato com o administrador." />
+        <PageHeader title="Minha Franquia" />
+        <EmptyState icon={Building2} title="Erro ao carregar" description="Não foi possível carregar os dados da sua franquia." />
       </div>
     );
   }
 
-  const historyData = months.map((month, i) => ({
-    month,
-    value: Math.round(unit.tces * (0.4 + (i + 1) / 12) * (1 + (Math.random() - 0.5) * 0.08)),
-  }));
+  if (!unit) {
+    return <div className="flex items-center justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  }
 
-  const statusMap: Record<string, string> = {
-    Operacional: 'Saudavel',
-    Critica: 'Atencao',
-    'Em Acompanhamento': 'Atencao',
-  };
+  const periodMap: Record<string, number> = { '5d': 5, '15d': 15, 'month': 30, '3m': 3, '5m': 5, '12m': 12 };
+  const isDaily = periodFilter === '5d' || periodFilter === '15d' || periodFilter === 'month';
+  const dailyData = tceHistory.map(h => ({ month: h.date.slice(5), value: h.totalTCE }));
+  const monthlyAgg = tceHistory.length > 0
+    ? Object.entries(tceHistory.reduce((acc: Record<string, number>, h) => {
+        const key = h.date.slice(0, 7);
+        acc[key] = h.totalTCE;
+        return acc;
+      }, {})).map(([month, value]) => ({ month: month.slice(5), value })).sort((a, b) => a.month.localeCompare(b.month))
+    : [];
+  const historyData = isDaily
+    ? dailyData.slice(-periodMap[periodFilter])
+    : (monthlyAgg.length > 0 ? monthlyAgg : dailyData).slice(-periodMap[periodFilter]);
+
+  const metrics = [
+    { label: 'TCEs Ativos', value: String(unit.tces), sub: '+8 este mês' },
+    { label: 'Crescimento', value: `${unit.growth >= 0 ? '+' : ''}${unit.growth} TCEs`, sub: '' },
+    { label: 'Engajamento', value: `${unit.engagement}%`, sub: 'Presença treinamentos' },
+    { label: 'Posição Ranking', value: `#${unit.ranking}`, sub: 'de 156 unidades' },
+  ];
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3.5">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-lg font-bold text-white">
-            {getInitials(unit.nomeFantasia)}
-          </div>
-          <div>
-            <h1 className="text-xl font-bold">Minha Franquia</h1>
-            <p className="text-sm text-muted-foreground">{unit.nomeFantasia} • {unit.razaoSocial}</p>
-          </div>
-          <SituationScale current={statusMap[unit.status] ?? 'Saudavel'} />
+      <PageHeader title={unit.nomeFantasia}>
+        <div className="flex items-center gap-3">
+          <SituationScale current={statusMap[calcStatus(unit.growth)] ?? 'Saudavel'} />
+          <StatusBadge status={calcStatus(unit.growth)} />
         </div>
-        <div className="flex gap-2">
-          {unit.ranking <= 5 && (
-            <Badge variant="outline" className="gap-1.5 border-yellow-200 bg-yellow-50 text-yellow-700">
-              <Trophy className="h-4 w-4" /> TOP 5 • #{unit.ranking} no Ranking
-            </Badge>
-          )}
-          <Badge variant="outline" className="gap-1.5 border-green-200 bg-green-50 text-green-600">
-            <span className="h-2 w-2 rounded-full bg-green-500" /> {unit.status}
-          </Badge>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-4 gap-3.5">
-        <StatCard label="TCEs Ativos" value={String(unit.tces)} trend="+8 este mês" trendUp>
-          <div className="flex items-end gap-0.5 h-6">
-            {historyData.map((v, i) => (
-              <div key={i} className="flex-1 rounded-sm bg-primary/70" style={{ height: `${(v.value / Math.max(...historyData.map(d => d.value))) * 100}%` }} />
-            ))}
-          </div>
-        </StatCard>
-        <StatCard label="Crescimento" value={`${unit.growth >= 0 ? '+' : ''}${unit.growth}%`} trend="+5.1%" trendUp>
-          <div className="flex items-end gap-0.5 h-6">
-            {[35,38,40,37,42,39,44,41,46,43,45,42].map((v, i) => (
-              <div key={i} className={`flex-1 rounded-sm ${v > 40 ? 'bg-green-500' : 'bg-yellow-500'}`} style={{ height: `${(v/46)*100}%`, opacity: 0.7 }} />
-            ))}
-          </div>
-        </StatCard>
-        <StatCard label="Posição no Ranking" value={`#${unit.ranking}`} trend="de 156" trendUp>
-          <div className="mt-2 h-2 w-full rounded-full bg-muted">
-            <div className="h-2 rounded-full bg-yellow-500" style={{ width: `${Math.max(1, 100 - unit.ranking * 0.6)}%` }} />
-          </div>
-          <p className="text-[10px] font-semibold text-yellow-600 mt-1">Top {Math.round((unit.ranking / 156) * 100)}% da rede</p>
-        </StatCard>
-        <StatCard label="Engajamento" value={`${unit.engagement}%`} trend="+3%" trendUp>
-          <div className="mt-1 h-1.5 w-full rounded-full bg-muted">
-            <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${unit.engagement}%` }} />
-          </div>
-          <div className="flex justify-between mt-1 text-[10px]">
-            <span className="text-muted-foreground">Presença em treinamentos</span>
-            <span className="text-green-600 font-semibold">{unit.engagement >= 75 ? 'Meta: 75% ✓' : 'Abaixo da meta'}</span>
-          </div>
-        </StatCard>
-      </div>
+      </PageHeader>
 
       <div className="grid grid-cols-3 gap-3.5">
-        <Card className="col-span-2">
+        <div className="col-span-2 space-y-5">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-lg font-bold text-white">
+              {getInitials(unit.nomeFantasia)}
+            </div>
+            <div>
+              <h1 className="text-xl font-bold">{unit.nomeFantasia}</h1>
+              <p className="text-sm text-muted-foreground">{unit.razaoSocial}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <StatusBadge status={calcStatus(unit.growth)} />
+                <span className="text-sm text-primary font-medium">Ranking #{unit.ranking}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            {metrics.map((m) => (
+              <Card key={m.label}>
+                <CardContent style={{ padding: '14px' }}>
+                  <p style={{ fontSize: '11px', color: '#888' }}>{m.label}</p>
+                  <p style={{ fontSize: '20px', fontWeight: 700 }}>{m.value}</p>
+                  <p style={{ fontSize: '11px', color: '#888' }}>{m.sub}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+
+        <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold">Evolução Histórica</CardTitle>
-              <div className="flex gap-1 rounded-md bg-muted p-0.5">
-                {['3M','6M','1A'].map((t, i) => (
-                  <button key={t} className={`px-2.5 py-1 text-xs rounded font-medium ${i===1?'bg-blue-500 text-white':'text-muted-foreground'}`}>{t}</button>
+              <CardTitle style={{ fontSize: '13px', fontWeight: 600 }}>Histórico Rápido</CardTitle>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {[['5d', '5d'], ['15d', '15d'], ['month', 'Mês'], ['3m', '3m'], ['5m', '5m'], ['12m', '12m']].map(([val, label]) => (
+                  <button key={val} type="button" onClick={() => setPeriodFilter(val)}
+                    style={{ padding: '2px 8px', fontSize: '11px', borderRadius: '4px', border: 'none', cursor: 'pointer', background: periodFilter === val ? '#DC3545' : '#eee', color: periodFilter === val ? '#fff' : '#666' }}>
+                    {label}
+                  </button>
                 ))}
               </div>
             </div>
           </CardHeader>
-          <CardContent className="pt-0">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={historyData}>
-                <XAxis dataKey="month" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-                <Bar dataKey="value" radius={[3,3,0,0]}>
-                  {historyData.map((entry, idx) => (
-                    <Cell key={idx} fill={entry.value > 100 ? '#28A745' : entry.value > 80 ? '#007BFF' : '#FFC107'} opacity={0.85} />
-                  ))}
-                </Bar>
-              </BarChart>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={140}>
+              <LineChart data={historyData}>
+                <XAxis dataKey="month" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+                <Tooltip formatter={(value: number) => [`${value} TCEs`, '']} labelFormatter={(label: string) => `${label}`} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
+                <Line type="monotone" dataKey="value" stroke="#DC3545" strokeWidth={2} dot={{ r: 3, fill: '#DC3545' }} />
+              </LineChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Comparativos</CardTitle></CardHeader>
-          <CardContent className="space-y-4 pt-0">
-            {[
-              { label: 'Crescimento', you: unit.growth, avg: 18.5 },
-              { label: 'Engajamento', you: unit.engagement, avg: 78.2 },
-            ].map((c) => (
-              <div key={c.label} className="space-y-1.5">
-                <p className="text-[11px] font-medium text-muted-foreground">{c.label}</p>
-                <div className="flex items-center gap-2 text-[10px]">
-                  <span className="font-semibold w-8">Você</span>
-                  <div className="flex-1 h-1.5 rounded-full bg-muted">
-                    <div className="h-1.5 rounded-full bg-primary" style={{ width: `${Math.min(100, c.you)}%` }} />
-                  </div>
-                  <span className="font-bold text-primary">{c.you}{typeof c.you === 'number' ? '%' : ''}</span>
-                </div>
-                <div className="flex items-center gap-2 text-[10px]">
-                  <span className="font-semibold w-8 text-muted-foreground">Média</span>
-                  <div className="flex-1 h-1.5 rounded-full bg-muted">
-                    <div className="h-1.5 rounded-full bg-gray-300" style={{ width: `${Math.min(100, c.avg)}%` }} />
-                  </div>
-                  <span className="font-bold text-muted-foreground">{c.avg}%</span>
-                </div>
-              </div>
-            ))}
           </CardContent>
         </Card>
       </div>
 
       <div className="grid grid-cols-3 gap-3.5">
         <Card className="col-span-2">
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Avisos da Franqueadora</CardTitle></CardHeader>
-          <CardContent className="space-y-0 pt-0">
-            {notices.length === 0 ? (
-              <p className="py-4 text-xs text-muted-foreground text-center">Nenhum aviso no momento.</p>
-            ) : (
-              notices.slice(0, 5).map((a) => (
-                <div key={a.id} className="flex items-center gap-3 border-b border-border py-2.5 last:border-0">
-                  {a.important ? (
-                    <span className="rounded bg-yellow-50 px-2 py-0.5 text-[10px] font-bold text-yellow-700">IMPORTANTE</span>
-                  ) : (
-                    <span className="w-12" />
-                  )}
-                  <span className="flex-1 text-sm truncate">{a.title}</span>
-                  <span className="text-xs text-muted-foreground">{formatDate(a.createdAt)}</span>
-                  <Eye className="h-4 w-4 text-muted-foreground shrink-0" />
-                </div>
-              ))
-            )}
+          <CardHeader className="pb-2"><CardTitle style={{ fontSize: '13px', fontWeight: 600 }}>Customer Success</CardTitle></CardHeader>
+          <CardContent className="pt-0">
+            <EmptyState className="border-none bg-transparent py-8" icon={Building2} title="Nenhum registro de CS" description="O histórico de acompanhamento aparecerá aqui." />
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Destaques</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle style={{ fontSize: '13px', fontWeight: 600 }}>Score de Saúde</CardTitle></CardHeader>
           <CardContent className="space-y-3 pt-0">
+            <div className="text-center">
+              <p style={{ fontSize: '32px', fontWeight: 700, color: '#28A745' }}>{unit.engagement}</p>
+              <p style={{ fontSize: '13px', fontWeight: 600, color: '#2E7D32' }}>{unit.engagement >= 80 ? 'Excelente' : unit.engagement >= 60 ? 'Bom' : 'Atenção'}</p>
+            </div>
             {[
-              { icon: Trophy, color: '#FFC107', label: unit.ranking <= 5 ? 'TOP 5' : 'Ranking #' + unit.ranking, sub: `Posição atual no ranking` },
-              { icon: TrendingUp, color: '#28A745', label: `Crescimento ${unit.growth >= 0 ? '+' : ''}${unit.growth}%`, sub: unit.growth >= 20 ? 'Acima da média da rede' : 'Dentro da média' },
-              { icon: Users, color: '#007BFF', label: `Engajamento ${unit.engagement}%`, sub: unit.engagement >= 75 ? 'Meta de presença atingida' : 'Abaixo da meta de 75%' },
-            ].map((h, i) => (
-              <div key={i} className="flex gap-2.5">
-                <div className="flex h-7 w-7 items-center justify-center rounded-md shrink-0" style={{ backgroundColor: h.color + '15' }}>
-                  <h.icon className="h-3.5 w-3.5" style={{ color: h.color }} />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold">{h.label}</p>
-                  <p className="text-[11px] text-muted-foreground">{h.sub}</p>
+              { label: 'Crescimento', val: Math.min(100, Math.round(unit.growth * 2 + 50)) },
+              { label: 'Engajamento', val: unit.engagement },
+              { label: 'TCEs', val: Math.min(100, Math.round(unit.tces / 2)) },
+            ].map((s) => (
+              <div key={s.label} className="space-y-1">
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#888' }}>{s.label}</span><span style={{ fontWeight: 600 }}>{s.val}/100</span></div>
+                <div style={{ height: '6px', width: '100%', borderRadius: '999px', background: '#eee' }}>
+                  <div style={{ height: '6px', borderRadius: '999px', width: `${s.val}%`, backgroundColor: s.val >= 80 ? '#28A745' : s.val >= 50 ? '#FFC107' : '#DC3545' }} />
                 </div>
               </div>
             ))}
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle style={{ fontSize: '13px', fontWeight: 600 }} className="flex items-center gap-2"><Trophy className="h-4 w-4 text-yellow-500" /> TOP 5</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {approvedTop5.length === 0 ? (
+            <p style={{ textAlign: 'center', padding: '24px', fontSize: '13px', color: '#999' }}>Nenhuma unidade promovida ao TOP 5 ainda.</p>
+          ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {approvedTop5.map((entry, i) => (
+              <div key={entry.name} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '8px', background: unit?.nomeFantasia === entry.name ? '#FFF8E1' : '#FAFAFA' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700, color: '#fff', background: colors[i] ?? '#9E9E9E' }}>{entry.pos}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: '13px', fontWeight: 600 }}>{entry.name} {unit?.nomeFantasia === entry.name ? '(você)' : ''}</p>
+                </div>
+                <span style={{ fontWeight: 700, fontSize: '13px' }}>{entry.growth}</span>
+              </div>
+            ))}
+          </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle style={{ fontSize: '13px', fontWeight: 600 }}>Ranking de Unidades</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-12">#</TableHead>
+                <TableHead>Unidade</TableHead>
+                <TableHead className="text-right">TCEs</TableHead>
+                <TableHead className="text-right">Crescimento</TableHead>
+                <TableHead className="text-right">Ranking</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedByTces.map((u, i) => (
+                <TableRow key={u.id} style={{ background: u.id === unit?.id ? '#FFF8E1' : undefined }}>
+                  <TableCell>
+                    <div style={{ width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, color: '#fff', background: colors[i] ?? '#BDBDBD' }}>{i + 1}</div>
+                  </TableCell>
+                  <TableCell style={{ fontWeight: u.id === unit?.id ? 700 : 400 }}>{u.nomeFantasia} {u.id === unit?.id ? '(você)' : ''}</TableCell>
+                  <TableCell className="text-right font-semibold">{u.tces}</TableCell>
+                  <TableCell className={`text-right font-semibold ${u.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>{u.growth >= 0 ? '+' : ''}{u.growth}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">#{u.ranking}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }

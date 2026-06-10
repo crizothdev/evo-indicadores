@@ -128,6 +128,11 @@ export async function updateTop5Entry(id: string, data: Partial<Top5Entry>): Pro
   await syncWrite('top5_audit', id, data as unknown as Record<string, unknown>);
 }
 
+export async function deleteTop5Entry(id: string): Promise<void> {
+  await firestore.deleteTop5Entry(id);
+  await syncDelete('top5_audit', id);
+}
+
 // Follow Up
 export async function fetchFollowUps(): Promise<FollowUp[]> {
   if (preferLocal()) {

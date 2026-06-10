@@ -53,9 +53,9 @@ function DialogContent({
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
-        style={{ background: '#fff', padding: '24px', borderRadius: '12px', minWidth: '600px' }}
+        style={{ background: '#fff', padding: '24px', borderRadius: '12px', maxWidth: '860px', width: '90vw' }}
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full -translate-x-1/2 -translate-y-1/2 gap-4 text-sm outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-8 left-1/2 z-50 grid w-full -translate-x-1/2 gap-4 text-sm outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}

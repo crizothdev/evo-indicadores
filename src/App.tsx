@@ -80,7 +80,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename="/evo-indicadores">
         <AuthProvider>
           <TooltipProvider>
             <AppRoutes />
