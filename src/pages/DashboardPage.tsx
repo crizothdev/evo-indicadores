@@ -24,6 +24,7 @@ export default function DashboardPage() {
   const role = (user?.role ?? 'admin') as Role;
   const { data: units = [], isLoading, error } = useUnits();
   const [totalHistory, setTotalHistory] = useState<{ month: string; total: number }[]>([]);
+  const [dailyHistory, setDailyHistory] = useState<{ date: string; total: number }[]>([]);
   const [unitMonthly, setUnitMonthly] = useState<Record<string, Record<string, number>>>({});
   const [evoPeriod, setEvoPeriod] = useState('6');
   const [rankMonth, setRankMonth] = useState(currentMonthIndex);
@@ -36,6 +37,7 @@ export default function DashboardPage() {
         const snap = await getDocs(collection(db, 'tce_history'));
         const sorted = snap.docs.sort((a, b) => a.data().date.localeCompare(b.data().date));
         const byMonth: Record<string, Record<string, number>> = {};
+        const byDay: Record<string, Record<string, number>> = {};
         const byUnit: Record<string, Record<string, number>> = {};
         sorted.forEach(d => {
           const date = d.data().date as string;
@@ -44,14 +46,21 @@ export default function DashboardPage() {
           const tces = d.data().totalTCE as number;
           if (!byMonth[monthKey]) byMonth[monthKey] = {};
           byMonth[monthKey][unit] = tces;
+          if (!byDay[date]) byDay[date] = {};
+          byDay[date][unit] = tces;
           if (!byUnit[unit]) byUnit[unit] = {};
           byUnit[unit][monthKey] = tces;
         });
-        const data = Object.entries(byMonth).map(([month, units]) => ({
+        const monthData = Object.entries(byMonth).map(([month, units]) => ({
           month: month.slice(5),
           total: Object.values(units).reduce((s, v) => s + v, 0),
         })).sort((a, b) => a.month.localeCompare(b.month));
-        setTotalHistory(data);
+        const dayData = Object.entries(byDay).map(([date, units]) => ({
+          date: date.slice(5),
+          total: Object.values(units).reduce((s, v) => s + v, 0),
+        })).sort((a, b) => a.date.localeCompare(b.date));
+        setTotalHistory(monthData);
+        setDailyHistory(dayData);
         setUnitMonthly(byUnit);
       } catch {}
     })();
@@ -107,16 +116,29 @@ export default function DashboardPage() {
   const atencao = units.filter((u) => u.status === 'Atenção').length;
   const critico = units.filter((u) => u.status === 'Crítico').length;
 
-  const evoPeriodMap: Record<string, number> = { '5d': 5, '15d': 15, '1m': 12, '3m': 12, '6m': 12, '12m': 12 };
-  const evoData = chartMetric === 'tces'
+  function getDailySample(data: any[]): any[] {
+    const days = new Set([1, 5, 10, 15, 20, 25]);
+    const lastDate = data.length > 0 ? data[data.length - 1].date : '';
+    const lastDay = lastDate ? parseInt(lastDate.split('-')[1], 10) : 0;
+    const fullDays = new Set(days);
+    if (lastDay) fullDays.add(lastDay);
+    return data.filter(d => fullDays.has(parseInt(d.date.split('-')[1], 10)));
+  }
+
+  const evoData: any[] = chartMetric === 'tces'
     ? (() => {
-        const count = evoPeriodMap[evoPeriod] ?? 12;
+        const dailyCount = evoPeriod === '5d' ? 5 : evoPeriod === '15d' ? 15 : evoPeriod === '1m' ? 30 : evoPeriod === '3m' ? 90 : 0;
+        if (dailyCount > 0 && dailyHistory.length > 0) {
+          const data = dailyHistory.slice(-dailyCount);
+          return evoPeriod === '1m' || evoPeriod === '3m' ? getDailySample(data) : data;
+        }
+        const count = evoPeriod === '6m' ? 6 : 12;
         const data = totalHistory.slice(-count);
         while (data.length < count) data.unshift({ month: '—', total: 0 });
         return data;
       })()
     : (() => {
-        const count = evoPeriodMap[evoPeriod] ?? 12;
+        const count = evoPeriod === '5d' ? 5 : evoPeriod === '15d' ? 15 : evoPeriod === '1m' ? 1 : evoPeriod === '3m' ? 3 : evoPeriod === '6m' ? 6 : 12;
         const data = engagementHistory.slice(-count);
         while (data.length < count) data.unshift({ month: '—', total: 0, max: 100 });
         return data;
@@ -232,8 +254,15 @@ export default function DashboardPage() {
           <CardContent className="pt-0">
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={evoData}>
-                <XAxis dataKey="month" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(value: any) => [`${value}${chartMetric === 'engagement' ? '%' : ' TCEs'}`, chartMetric === 'engagement' ? 'Engajamento' : 'Total']} labelFormatter={(label: any) => `Mês: ${label}`} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
+                <XAxis dataKey={evoData.length > 0 && 'month' in evoData[0] ? 'month' : 'date'} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip formatter={(value: any) => [`${value}${chartMetric === 'engagement' ? '%' : ' TCEs'}`, chartMetric === 'engagement' ? 'Engajamento' : 'Total']} labelFormatter={(label: any) => {
+                  if (chartMetric !== 'engagement' && evoData.length > 0 && 'date' in evoData[0]) {
+                    const [m, d] = label.split('-');
+                    const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+                    return `${meses[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`;
+                  }
+                  return `Mês: ${label}`;
+                }} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
                 <Line type="monotone" dataKey="total" stroke="#DC3545" strokeWidth={2} dot={{ r: 3, fill: '#DC3545' }} />
               </LineChart>
             </ResponsiveContainer>

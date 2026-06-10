@@ -81,8 +81,17 @@ export default function FranquiaDashboardPage() {
     return <div className="flex items-center justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   }
 
-  const periodMap: Record<string, number> = { '5d': 5, '15d': 15, 'month': 30, '3m': 3, '5m': 5, '12m': 12 };
-  const isDaily = periodFilter === '5d' || periodFilter === '15d' || periodFilter === 'month';
+  function getDailySample(data: { month: string; value: number }[]): { month: string; value: number }[] {
+    const days = new Set([1, 5, 10, 15, 20, 25]);
+    const lastDate = data.length > 0 ? data[data.length - 1].month : '';
+    const lastDay = lastDate ? parseInt(lastDate.split('-')[1], 10) : 0;
+    const fullDays = new Set(days);
+    if (lastDay) fullDays.add(lastDay);
+    return data.filter(d => fullDays.has(parseInt(d.month.split('-')[1], 10)));
+  }
+
+  const periodMap: Record<string, number> = { '5d': 5, '15d': 15, 'month': 60, '3m': 180, '5m': 5, '12m': 12 };
+  const isDaily = periodFilter === '5d' || periodFilter === '15d' || periodFilter === 'month' || periodFilter === '3m';
   const dailyData = tceHistory.map(h => ({ month: h.date.slice(5), value: h.totalTCE }));
   const monthlyAgg = tceHistory.length > 0
     ? Object.entries(tceHistory.reduce((acc: Record<string, number>, h) => {
@@ -92,7 +101,7 @@ export default function FranquiaDashboardPage() {
       }, {})).map(([month, value]) => ({ month: month.slice(5), value })).sort((a, b) => a.month.localeCompare(b.month))
     : [];
   const historyData = isDaily
-    ? dailyData.slice(-periodMap[periodFilter])
+    ? (periodFilter === 'month' || periodFilter === '3m' ? getDailySample(dailyData.slice(-periodMap[periodFilter])) : dailyData.slice(-periodMap[periodFilter]))
     : (monthlyAgg.length > 0 ? monthlyAgg : dailyData).slice(-periodMap[periodFilter]);
 
   const metrics = [
@@ -158,7 +167,15 @@ export default function FranquiaDashboardPage() {
             <ResponsiveContainer width="100%" height={140}>
               <LineChart data={historyData}>
                 <XAxis dataKey="month" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(value: any) => [`${value} TCEs`, '']} labelFormatter={(label: any) => `${label}`} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
+                <Tooltip formatter={(value: any) => [`${value} TCEs`, '']} labelFormatter={(label: any) => {
+                  if (label.includes('-')) {
+                    const [m, d] = label.split('-');
+                    const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+                    return `${meses[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`;
+                  }
+                  const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+                  return meses[parseInt(label, 10) - 1] || label;
+                }} contentStyle={{ background: '#fff', border: '1px solid #eee', borderRadius: '6px', fontSize: '12px' }} />
                 <Line type="monotone" dataKey="value" stroke="#DC3545" strokeWidth={2} dot={{ r: 3, fill: '#DC3545' }} />
               </LineChart>
             </ResponsiveContainer>
